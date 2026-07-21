@@ -2,7 +2,7 @@
   "name": "smiles-hover",
   "displayName": "SMILES Hover",
   "description": "Select a SMILES string and see its 2D molecular structure, rendered with RDKit in ChemDraw style. No setup required.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "adrianm0",
   "license": "MIT",
   "icon": "images/icon.png",

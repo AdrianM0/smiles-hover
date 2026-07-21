@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+
+- Ship RDKit's BSD-3-Clause notice with the extension. The bundled WASM is a
+  binary redistribution, which requires reproducing the copyright notice and
+  disclaimer alongside it; only the `.vsix` changes, not the code.
+
 ## 0.4.1
 
 - **Fixed molecules being clipped in the hover.** 0.4.0 grew the canvas for

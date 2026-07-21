@@ -141,7 +141,9 @@ The README demo is generated, not screen-recorded —
 into a mock editor window and encodes the GIF, so it can never drift from what
 the extension actually draws. Regenerate it with `npm run demo`.
 
-Release and publishing notes live in [CONTRIBUTING.md](CONTRIBUTING.md).
+Pushing a `v*` tag builds the `.vsix`, attaches it to a GitHub Release, and
+publishes to the Marketplace — see
+[.github/workflows/release.yml](.github/workflows/release.yml).
 
 ## Limitations
 
@@ -153,4 +155,5 @@ Release and publishing notes live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MIT — see [LICENSE](LICENSE). Bundles
 [RDKit](https://github.com/rdkit/rdkit) (BSD-3-Clause) via
-[@rdkit/rdkit](https://www.npmjs.com/package/@rdkit/rdkit).
+[@rdkit/rdkit](https://www.npmjs.com/package/@rdkit/rdkit); notice in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
