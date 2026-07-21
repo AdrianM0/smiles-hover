@@ -120,8 +120,10 @@ export class SmilesRenderer {
     const height = cfg.get<number>("imageHeight", 350);
     const preset = cfg.get<string>("colorPreset", "chemdraw");
     const autoSize = cfg.get<boolean>("autoSize", true);
+    const maxW = cfg.get<number>("maxHoverWidth", 460);
+    const maxH = cfg.get<number>("maxHoverHeight", 240);
 
-    const cacheKey = `${smiles}::${width}x${height}::${preset}::${autoSize}`;
+    const cacheKey = `${smiles}::${width}x${height}::${preset}::${autoSize}::${maxW}x${maxH}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       if (cached.error) throw new Error(cached.error);
@@ -129,7 +131,8 @@ export class SmilesRenderer {
     }
 
     try {
-      const svg = await this.draw(smiles, width, height, preset, autoSize);
+      const raw = await this.draw(smiles, width, height, preset, autoSize);
+      const svg = fitForHover(raw, maxW, maxH);
       this.cache.set(cacheKey, { svg });
       return svg;
     } catch (err) {
@@ -171,6 +174,47 @@ export class SmilesRenderer {
       mol.delete();
     }
   }
+}
+
+/**
+ * Shrink the SVG's *displayed* size to fit inside a hover popup, leaving the
+ * viewBox alone.
+ *
+ * VS Code's hover widget is small — its max height is derived from the editor
+ * height (roughly a quarter of it, with a floor around 250px), and markdown
+ * images render at their intrinsic size. An image taller than that isn't
+ * scaled to fit, it's clipped behind a scrollbar, so half the molecule
+ * disappears.
+ *
+ * Because the render is vector, display size and render size are independent:
+ * the canvas can stay large (which is what gives the layout room and keeps
+ * atom labels from colliding) while the intrinsic width/height come down to
+ * something the hover will actually show in full. Scaling is uniform, so the
+ * aspect ratio survives.
+ */
+function fitForHover(svg: string, maxW: number, maxH: number): string {
+  const m = svg.match(
+    /<svg[^>]*?\bwidth=['"](\d+(?:\.\d+)?)px['"]\s+height=['"](\d+(?:\.\d+)?)px['"]/
+  );
+  if (!m) return svg; // unrecognised header — better to show it than mangle it
+
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  if (!(w > 0 && h > 0)) return svg;
+
+  const scale = Math.min(1, maxW / w, maxH / h);
+  if (scale >= 1) return svg;
+
+  const dispW = Math.round(w * scale);
+  const dispH = Math.round(h * scale);
+  // Replace only the root element's width/height; the viewBox stays as-is so
+  // the drawing scales rather than being cropped.
+  return svg.replace(
+    m[0],
+    m[0]
+      .replace(/\bwidth=['"][\d.]+px['"]/, `width='${dispW}px'`)
+      .replace(/\bheight=['"][\d.]+px['"]/, `height='${dispH}px'`)
+  );
 }
 
 /**

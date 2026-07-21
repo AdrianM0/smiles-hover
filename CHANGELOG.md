@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1
+
+- **Fixed molecules being clipped in the hover.** 0.4.0 grew the canvas for
+  bigger structures, but VS Code's hover widget has its own height limit
+  (roughly a quarter of the editor height) and clips overflowing content behind
+  a scrollbar instead of scaling it — so the taller renders lost their bottom
+  half. The SVG's displayed size is now capped independently of its render
+  size. Since the render is vector, the canvas stays large (which is what keeps
+  atom labels from colliding) while the image shown fits the popup.
+- Added `smilesHover.maxHoverWidth` (460) and `smilesHover.maxHoverHeight`
+  (240). Raise them if you run a tall editor and want larger structures.
+
 ## 0.4.0
 
 - **The whole structure is now visible by default.** The canvas is sized from

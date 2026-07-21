@@ -41,19 +41,29 @@ Palette → **SMILES Hover: Clear Cache** to reset.
 
 ## Configuration
 
-| Setting                   | Default    | Description                                        |
-| ------------------------- | ---------- | -------------------------------------------------- |
-| `smilesHover.autoSize`    | `true`     | Size the canvas to the molecule (see below).        |
-| `smilesHover.imageWidth`  | `500`      | Base render width in px.                            |
-| `smilesHover.imageHeight` | `350`      | Base render height in px.                           |
-| `smilesHover.colorPreset` | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette.       |
+| Setting                       | Default    | Description                                   |
+| ----------------------------- | ---------- | --------------------------------------------- |
+| `smilesHover.autoSize`        | `true`     | Size the canvas to the molecule (see below).  |
+| `smilesHover.maxHoverWidth`   | `460`      | Max displayed width inside the hover, px.     |
+| `smilesHover.maxHoverHeight`  | `240`      | Max displayed height inside the hover, px.    |
+| `smilesHover.imageWidth`      | `500`      | Base render width in px.                      |
+| `smilesHover.imageHeight`     | `350`      | Base render height in px.                     |
+| `smilesHover.colorPreset`     | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette. |
 
 With `autoSize` on (the default), the whole structure is always visible at a
 legible scale: the canvas area grows with the atom count, and its aspect ratio
-is taken from the generated 2D layout, so a long molecule gets a wide popup
+is taken from the generated 2D layout, so a long molecule gets a wide render
 rather than a thin band floating in an empty box. `imageWidth`/`imageHeight`
 set the base size this scales from. Turn `autoSize` off to pin every render to
 exactly those dimensions.
+
+Render size and *displayed* size are separate. VS Code's hover has a limited
+height — roughly a quarter of the editor's — and clips content that overflows
+rather than scaling it, which would cut the bottom off a large molecule. So the
+image is scaled down to fit `maxHoverWidth` × `maxHoverHeight` on display while
+the underlying canvas stays large. It's vector, so nothing gets blurry, and the
+big canvas is what stops atom labels colliding on dense structures. If you work
+in a tall editor, raising `maxHoverHeight` gets you bigger structures.
 
 Color presets:
 
