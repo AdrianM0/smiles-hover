@@ -1,5 +1,9 @@
 # SMILES Hover
 
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/adrianm0.smiles-hover?label=marketplace)](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/adrianm0.smiles-hover)](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Select a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text —
 press `Ctrl+K M`, and see the 2D structure rendered with **RDKit** in
 **ChemDraw style**.
@@ -11,17 +15,49 @@ extension as WebAssembly.
 
 ## Install
 
-Download the latest `.vsix` from the
-[Releases page](https://github.com/AdrianM0/smiles-hover/releases), then:
+### VS Code
+
+Open the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`), search for
+**SMILES Hover**, and click **Install**.
+
+Or from a terminal:
 
 ```bash
-code --install-extension smiles-hover-<version>.vsix
+code --install-extension adrianm0.smiles-hover
 ```
 
-Or, from inside VS Code: Command Palette → **Extensions: Install from VSIX…**
+Or open the
+[Marketplace page](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
+and click **Install**.
 
-This also works in Cursor, VSCodium, and Windsurf — substitute their CLI
-(`cursor`, `codium`, …) for `code`.
+That's everything — there's nothing else to set up. Select a SMILES string and
+press `Ctrl+K M`.
+
+### Cursor, VSCodium, Windsurf
+
+These can't reach the Microsoft Marketplace, so install the file directly:
+
+1. Download `smiles-hover-<version>.vsix` from the
+   [latest release](https://github.com/AdrianM0/smiles-hover/releases/latest).
+2. In the editor: Command Palette (`Ctrl+Shift+P`) →
+   **Extensions: Install from VSIX…** → pick the downloaded file.
+
+Or from a terminal, using whichever CLI your editor installs
+(`cursor`, `codium`, `windsurf`):
+
+```bash
+cursor --install-extension ~/Downloads/smiles-hover-<version>.vsix
+```
+
+The extension only uses stable VS Code API, so it should work on any current
+fork — though it's only been tested on VS Code.
+
+### Remote SSH, WSL, and containers
+
+Install it on the **remote** side, where your files are. In the Extensions
+view, an extension installed only locally shows an **Install in SSH: …** (or
+**Install in WSL**, **Install in Container**) button — click that. From a
+terminal, run the install command in the remote session.
 
 ## Usage
 
@@ -105,39 +141,7 @@ The README demo is generated, not screen-recorded —
 into a mock editor window and encodes the GIF, so it can never drift from what
 the extension actually draws. Regenerate it with `npm run demo`.
 
-Pushing a `v*` tag builds the `.vsix` and attaches it to a GitHub Release — see
-[.github/workflows/release.yml](.github/workflows/release.yml). The same
-workflow publishes to the extension marketplaces if the relevant tokens are
-configured, and silently skips that if they aren't.
-
-### Publishing to the VS Code Marketplace
-
-One-time setup, all of it interactive:
-
-1. Create a free [Azure DevOps](https://dev.azure.com) organization — the
-   Marketplace authenticates against it.
-2. Create a Personal Access Token there: **Organization** = *All accessible
-   organizations*, **Scopes** = *Custom defined* → **Marketplace** → **Manage**.
-   Both of those matter; the token won't work scoped to a single org.
-3. Create the publisher at
-   [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage/createpublisher).
-   The publisher ID must be exactly `adrianm0`, matching `publisher` in
-   [package.json](package.json).
-4. Add the PAT as a repository secret named `VSCE_PAT`
-   (**Settings → Secrets and variables → Actions**).
-
-Then `git tag vX.Y.Z && git push origin vX.Y.Z` publishes. To publish by hand
-instead: `npx vsce publish -p <PAT>`.
-
-Marketplace tokens expire (max one year), and a publish will fail with a 401
-once yours does — regenerate and update the secret.
-
-### Publishing to Open VSX
-
-Open VSX is the registry Cursor, VSCodium, and Windsurf use; they can't install
-from the Microsoft Marketplace. Sign in at [open-vsx.org](https://open-vsx.org)
-with GitHub, sign the publisher agreement, create an access token, and add it as
-the `OVSX_PAT` secret.
+Release and publishing notes live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Limitations
 
