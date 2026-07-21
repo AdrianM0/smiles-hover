@@ -3,6 +3,7 @@
 .github/**
 src/**
 scripts/**
+images/**
 node_modules/**
 **/*.map
 **/tsconfig.json

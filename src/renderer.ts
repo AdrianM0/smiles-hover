@@ -9,6 +9,8 @@ interface CacheEntry {
 /** Subset of the RDKit MinimalLib surface we use. */
 interface RDKitMol {
   is_valid(): boolean;
+  get_num_atoms(): number;
+  get_molblock(): string;
   get_svg_with_highlights(details: string): string;
   delete(): void;
 }
@@ -117,8 +119,9 @@ export class SmilesRenderer {
     const width = cfg.get<number>("imageWidth", 500);
     const height = cfg.get<number>("imageHeight", 350);
     const preset = cfg.get<string>("colorPreset", "chemdraw");
+    const autoSize = cfg.get<boolean>("autoSize", true);
 
-    const cacheKey = `${smiles}::${width}x${height}::${preset}`;
+    const cacheKey = `${smiles}::${width}x${height}::${preset}::${autoSize}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       if (cached.error) throw new Error(cached.error);
@@ -126,7 +129,7 @@ export class SmilesRenderer {
     }
 
     try {
-      const svg = await this.draw(smiles, width, height, preset);
+      const svg = await this.draw(smiles, width, height, preset, autoSize);
       this.cache.set(cacheKey, { svg });
       return svg;
     } catch (err) {
@@ -140,7 +143,8 @@ export class SmilesRenderer {
     smiles: string,
     width: number,
     height: number,
-    preset: string
+    preset: string,
+    autoSize: boolean
   ): Promise<string> {
     const rdkit = await this.load();
 
@@ -158,14 +162,92 @@ export class SmilesRenderer {
     }
 
     try {
+      const [w, h] = autoSize ? canvasFor(mol, width, height) : [width, height];
       return mol.get_svg_with_highlights(
-        JSON.stringify(drawOptions(width, height, preset))
+        JSON.stringify(drawOptions(w, h, preset))
       );
     } finally {
       // WASM heap isn't garbage-collected for us.
       mol.delete();
     }
   }
+}
+
+/**
+ * Measure the 2D layout's bounding box from the molblock RDKit generates.
+ * Returns width/height in molfile coordinate units.
+ *
+ * Molblock atom lines are fixed-width: x, y, z each in a 10-char field,
+ * starting at line 4 (0-indexed), with the atom count in the first 3 chars
+ * of the counts line.
+ */
+function layoutBBox(molblock: string): { w: number; h: number } | undefined {
+  const lines = molblock.split("\n");
+  const numAtoms = parseInt(lines[3]?.slice(0, 3) ?? "", 10);
+  if (!Number.isFinite(numAtoms) || numAtoms < 1) return undefined;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < numAtoms; i++) {
+    const line = lines[4 + i];
+    if (!line) return undefined;
+    const x = parseFloat(line.slice(0, 10));
+    const y = parseFloat(line.slice(10, 20));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  return { w: maxX - minX, h: maxY - minY };
+}
+
+/**
+ * Pick a canvas that shows the whole structure at a legible scale.
+ *
+ * Two things go wrong with a fixed canvas. RDKit scales coordinates to fit
+ * whatever it's given, so a big molecule isn't cropped — it's crushed, with
+ * atom labels colliding into a pile. And a long thin molecule on a 10:7
+ * canvas fits to width, wasting most of the height and shrinking the
+ * structure for no reason.
+ *
+ * So: grow the *area* with the atom count (sub-linear, since 2D layouts
+ * spread in both dimensions), and match the *aspect* to the actual layout.
+ * Both are clamped — a popup shouldn't be taller than the editor, and
+ * decane shouldn't render as a 15:1 ribbon.
+ */
+function canvasFor(
+  mol: RDKitMol,
+  baseWidth: number,
+  baseHeight: number
+): [number, number] {
+  const REFERENCE_ATOMS = 16; // ~caffeine; what the defaults were tuned for
+  const MAX_SCALE = 1.6;
+  const MIN_ASPECT = 0.8;
+  const MAX_ASPECT = 2.5;
+  const MAX_W = 820;
+  const MAX_H = 620;
+
+  const scale = Math.min(
+    MAX_SCALE,
+    Math.max(1, Math.sqrt(mol.get_num_atoms() / REFERENCE_ATOMS))
+  );
+  const area = baseWidth * baseHeight * scale * scale;
+
+  let aspect = baseWidth / baseHeight;
+  const bbox = layoutBBox(mol.get_molblock());
+  if (bbox && bbox.w > 0.01 && bbox.h > 0.01) {
+    aspect = bbox.w / bbox.h;
+  } else if (bbox && bbox.w > 0.01) {
+    aspect = MAX_ASPECT; // perfectly linear layout, e.g. a short alkane
+  }
+  aspect = Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, aspect));
+
+  const w = Math.min(MAX_W, Math.round(Math.sqrt(area * aspect)));
+  const h = Math.min(MAX_H, Math.round(w / aspect));
+  return [w, h];
 }
 
 /**
@@ -184,9 +266,12 @@ function drawOptions(width: number, height: number, preset: string) {
     // Bolder than ACS print defaults so the molecule pops on screen.
     bondLineWidth: 2.4,
     scaleBondWidth: true,
-    minFontSize: 18,
+    // No fixedFontSize: it pins labels at one size regardless of how dense
+    // the structure is, so anything bigger than a drug fragment ends up with
+    // labels overlapping the bonds. Let RDKit scale them to the drawing, with
+    // a floor that keeps them readable.
+    minFontSize: 12,
     maxFontSize: 22,
-    fixedFontSize: 20,
     annotationFontScale: 0.75,
     additionalAtomLabelPadding: 0.1,
     padding: 0.1,

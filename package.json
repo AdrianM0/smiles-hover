@@ -2,7 +2,7 @@
   "name": "smiles-hover",
   "displayName": "SMILES Hover",
   "description": "Select a SMILES string and see its 2D molecular structure, rendered with RDKit in ChemDraw style. No setup required.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "adrianm0",
   "license": "MIT",
   "repository": {
@@ -38,12 +38,17 @@
         "smilesHover.imageWidth": {
           "type": "number",
           "default": 500,
-          "description": "Width of the rendered molecule (px)."
+          "description": "Base width of the rendered molecule (px). Larger structures scale up from this unless autoSize is off."
         },
         "smilesHover.imageHeight": {
           "type": "number",
           "default": 350,
-          "description": "Height of the rendered molecule (px)."
+          "description": "Base height of the rendered molecule (px). Larger structures scale up from this unless autoSize is off."
+        },
+        "smilesHover.autoSize": {
+          "type": "boolean",
+          "default": true,
+          "description": "Grow the canvas for larger molecules so the whole structure stays legible. Turn off to always render at exactly imageWidth x imageHeight."
         },
         "smilesHover.colorPreset": {
           "type": "string",
@@ -95,12 +100,15 @@
     "vendor": "node scripts/vendor-rdkit.js",
     "compile": "npm run vendor && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package",
+    "demo": "node scripts/make-demo.js"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^3.9.2",
+    "gifenc": "^1.0.3",
     "typescript": "^5.3.0"
   },
   "dependencies": {

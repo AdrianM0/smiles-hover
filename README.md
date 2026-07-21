@@ -7,6 +7,8 @@ press `Ctrl+K M`, and see the 2D structure rendered with **RDKit** in
 No Python, no `pip install`, no configuration. RDKit ships inside the
 extension as WebAssembly.
 
+![SMILES Hover in action](https://raw.githubusercontent.com/AdrianM0/smiles-hover/main/images/demo.gif)
+
 ## Install
 
 Download the latest `.vsix` from the
@@ -39,11 +41,19 @@ Palette → **SMILES Hover: Clear Cache** to reset.
 
 ## Configuration
 
-| Setting                   | Default    | Description                                   |
-| ------------------------- | ---------- | --------------------------------------------- |
-| `smilesHover.imageWidth`  | `500`      | Render width in px.                           |
-| `smilesHover.imageHeight` | `350`      | Render height in px.                          |
-| `smilesHover.colorPreset` | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette. |
+| Setting                   | Default    | Description                                        |
+| ------------------------- | ---------- | -------------------------------------------------- |
+| `smilesHover.autoSize`    | `true`     | Size the canvas to the molecule (see below).        |
+| `smilesHover.imageWidth`  | `500`      | Base render width in px.                            |
+| `smilesHover.imageHeight` | `350`      | Base render height in px.                           |
+| `smilesHover.colorPreset` | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette.       |
+
+With `autoSize` on (the default), the whole structure is always visible at a
+legible scale: the canvas area grows with the atom count, and its aspect ratio
+is taken from the generated 2D layout, so a long molecule gets a wide popup
+rather than a thin band floating in an empty box. `imageWidth`/`imageHeight`
+set the base size this scales from. Turn `autoSize` off to pin every render to
+exactly those dimensions.
 
 Color presets:
 
@@ -79,6 +89,11 @@ To build a `.vsix` locally:
 ```bash
 npm run package
 ```
+
+The README demo is generated, not screen-recorded —
+[scripts/make-demo.js](scripts/make-demo.js) composites real renderer output
+into a mock editor window and encodes the GIF, so it can never drift from what
+the extension actually draws. Regenerate it with `npm run demo`.
 
 Pushing a `v*` tag builds the `.vsix` and attaches it to a GitHub Release — see
 [.github/workflows/release.yml](.github/workflows/release.yml).
