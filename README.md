@@ -96,7 +96,38 @@ into a mock editor window and encodes the GIF, so it can never drift from what
 the extension actually draws. Regenerate it with `npm run demo`.
 
 Pushing a `v*` tag builds the `.vsix` and attaches it to a GitHub Release — see
-[.github/workflows/release.yml](.github/workflows/release.yml).
+[.github/workflows/release.yml](.github/workflows/release.yml). The same
+workflow publishes to the extension marketplaces if the relevant tokens are
+configured, and silently skips that if they aren't.
+
+### Publishing to the VS Code Marketplace
+
+One-time setup, all of it interactive:
+
+1. Create a free [Azure DevOps](https://dev.azure.com) organization — the
+   Marketplace authenticates against it.
+2. Create a Personal Access Token there: **Organization** = *All accessible
+   organizations*, **Scopes** = *Custom defined* → **Marketplace** → **Manage**.
+   Both of those matter; the token won't work scoped to a single org.
+3. Create the publisher at
+   [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage/createpublisher).
+   The publisher ID must be exactly `adrianm0`, matching `publisher` in
+   [package.json](package.json).
+4. Add the PAT as a repository secret named `VSCE_PAT`
+   (**Settings → Secrets and variables → Actions**).
+
+Then `git tag vX.Y.Z && git push origin vX.Y.Z` publishes. To publish by hand
+instead: `npx vsce publish -p <PAT>`.
+
+Marketplace tokens expire (max one year), and a publish will fail with a 401
+once yours does — regenerate and update the secret.
+
+### Publishing to Open VSX
+
+Open VSX is the registry Cursor, VSCodium, and Windsurf use; they can't install
+from the Microsoft Marketplace. Sign in at [open-vsx.org](https://open-vsx.org)
+with GitHub, sign the publisher agreement, create an access token, and add it as
+the `OVSX_PAT` secret.
 
 ## Limitations
 

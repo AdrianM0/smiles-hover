@@ -5,6 +5,11 @@
   "version": "0.4.0",
   "publisher": "adrianm0",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e2430",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/AdrianM0/smiles-hover.git"
@@ -101,7 +106,8 @@
     "compile": "npm run vendor && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
-    "demo": "node scripts/make-demo.js"
+    "demo": "node scripts/make-demo.js",
+    "icon": "node scripts/make-icon.js"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

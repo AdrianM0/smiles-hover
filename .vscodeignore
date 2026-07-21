@@ -4,6 +4,7 @@
 src/**
 scripts/**
 images/**
+!images/icon.png
 node_modules/**
 **/*.map
 **/tsconfig.json

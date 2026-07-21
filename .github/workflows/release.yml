@@ -11,6 +11,12 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    # Job-level env so the publish steps below can test it in `if:` — a
+    # step's own `env:` isn't visible to its own `if:`, and the `secrets`
+    # context isn't available in step conditions at all.
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,3 +35,13 @@ jobs:
         with:
           files: smiles-hover-*.vsix
           generate_release_notes: true
+
+      # Both publish steps are skipped when their token isn't configured, so
+      # the GitHub Release still happens if you haven't set up a publisher.
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath smiles-hover-${{ github.ref_name }}.vsix
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx -y ovsx publish smiles-hover-${{ github.ref_name }}.vsix
