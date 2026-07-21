@@ -1,0 +1,109 @@
+{
+  "name": "smiles-hover",
+  "displayName": "SMILES Hover",
+  "description": "Select a SMILES string and see its 2D molecular structure, rendered with RDKit in ChemDraw style. No setup required.",
+  "version": "0.3.0",
+  "publisher": "adrianm0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdrianM0/smiles-hover.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AdrianM0/smiles-hover/issues"
+  },
+  "homepage": "https://github.com/AdrianM0/smiles-hover#readme",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "smiles",
+    "chemistry",
+    "rdkit",
+    "molecule",
+    "cheminformatics"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "SMILES Hover",
+      "properties": {
+        "smilesHover.imageWidth": {
+          "type": "number",
+          "default": 500,
+          "description": "Width of the rendered molecule (px)."
+        },
+        "smilesHover.imageHeight": {
+          "type": "number",
+          "default": 350,
+          "description": "Height of the rendered molecule (px)."
+        },
+        "smilesHover.colorPreset": {
+          "type": "string",
+          "enum": [
+            "chemdraw",
+            "bright",
+            "mono"
+          ],
+          "enumDescriptions": [
+            "ChemDraw-style: muted, publication-friendly colors on white",
+            "Vivid CPK-like colors (saturated red O, blue N, etc.)",
+            "Pure black on white, no atom coloring"
+          ],
+          "default": "chemdraw",
+          "description": "Atom color palette."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "smilesHover.showSelection",
+        "title": "SMILES Hover: Show Molecule for Selection"
+      },
+      {
+        "command": "smilesHover.clearCache",
+        "title": "SMILES Hover: Clear Cache"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "smilesHover.showSelection",
+        "key": "ctrl+k m",
+        "mac": "cmd+k m",
+        "when": "editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "smilesHover.showSelection",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "vendor": "node scripts/vendor-rdkit.js",
+    "compile": "npm run vendor && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@rdkit/rdkit": "^2025.3.4-1.0.0"
+  }
+}
