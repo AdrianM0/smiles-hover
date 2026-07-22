@@ -2,7 +2,7 @@
   "name": "smiles-hover",
   "displayName": "SMILES Hover",
   "description": "Select a SMILES string and see its 2D molecular structure, rendered with RDKit in ChemDraw style. No setup required.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "publisher": "adrianm0",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -64,6 +64,12 @@
           "type": "boolean",
           "default": true,
           "description": "Grow the canvas for larger molecules so the whole structure stays legible. Turn off to always render at exactly imageWidth x imageHeight."
+        },
+        "smilesHover.retentionMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "description": "How long a molecule you've rendered stays hoverable, in minutes. Hovering that span again within this window re-shows it without re-rendering."
         },
         "smilesHover.colorPreset": {
           "type": "string",

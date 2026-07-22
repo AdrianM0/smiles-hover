@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3
+
+- **Rendered molecules stay hoverable.** Previously a render was a one-shot
+  payload that lived 60 seconds and was replaced by the next one, so hovering a
+  SMILES you'd already looked at showed nothing. Renders are now remembered per
+  document for 15 minutes each, so any span you've rendered keeps its molecule
+  on hover — including several in the same file.
+- Added `smilesHover.retentionMinutes` (default 15). A remembered render is
+  dropped early if the text under it changes, and when its document closes;
+  "Clear Cache" forgets them all.
+
 ## 0.4.2
 
 - Ship RDKit's BSD-3-Clause notice with the extension. The bundled WASM is a

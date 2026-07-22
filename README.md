@@ -64,8 +64,10 @@ terminal, run the install command in the remote session.
 1. Select a SMILES string.
 2. Press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover: Show
    Molecule for Selection**.
-3. The structure appears in a hover over the selection, and stays available for
-   60 seconds so you can re-hover without re-rendering.
+3. The structure appears in a hover over the selection, and stays there for 15
+   minutes — hover that span again any time within the window and the molecule
+   comes straight back, no re-render and no repeated keypress. Every span you
+   render in a file stays live, not just the last one.
 
 Selections are cleaned before rendering — surrounding quotes, trailing commas,
 and escape sequences like `\n` or `\"` are stripped — so grabbing a value
@@ -85,6 +87,7 @@ Palette → **SMILES Hover: Clear Cache** to reset.
 | `smilesHover.imageWidth`      | `500`      | Base render width in px.                      |
 | `smilesHover.imageHeight`     | `350`      | Base render height in px.                     |
 | `smilesHover.colorPreset`     | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette. |
+| `smilesHover.retentionMinutes`| `15`       | How long a render stays hoverable, minutes.   |
 
 With `autoSize` on (the default), the whole structure is always visible at a
 legible scale: the canvas area grows with the atom count, and its aspect ratio

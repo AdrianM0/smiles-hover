@@ -5,25 +5,52 @@ import { cleanSmiles } from "./smiles";
 let renderer: SmilesRenderer;
 
 /**
- * A rendered molecule waiting to be shown in a hover, anchored to the
- * selection the user invoked the command on.
+ * A rendered molecule anchored to the selection the user invoked the command
+ * on. Kept around after the hover closes so the same span stays hoverable.
  */
-interface PendingHover {
-  uri: string;
+interface ShownMolecule {
   range: vscode.Range;
   smiles: string;
   svg: string;
   expiresAt: number;
 }
 
-let pending: PendingHover | undefined;
+/**
+ * Molecules shown per document, newest last. Entries expire on their own TTL;
+ * we prune lazily on access rather than running a timer, and cap each document
+ * so a long session can't grow the SVGs without bound.
+ */
+const shown = new Map<string, ShownMolecule[]>();
+
+const MAX_PER_DOC = 64;
+
+function retentionMs(): number {
+  const minutes = vscode.workspace
+    .getConfiguration("smilesHover")
+    .get<number>("retentionMinutes", 15);
+  return Math.max(0, minutes) * 60_000;
+}
+
+/** Drop expired entries; returns the surviving list (undefined if none). */
+function live(uri: string): ShownMolecule[] | undefined {
+  const entries = shown.get(uri);
+  if (!entries) return;
+  const now = Date.now();
+  const kept = entries.filter((e) => e.expiresAt > now);
+  if (kept.length === 0) {
+    shown.delete(uri);
+    return;
+  }
+  if (kept.length !== entries.length) shown.set(uri, kept);
+  return kept;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   renderer = new SmilesRenderer(context.extensionPath);
 
-  // Hover provider is now *passive* — it only returns content when there's
-  // a pending payload that matches the current cursor position. No more
-  // guessing whether a token is a SMILES.
+  // Hover provider is *passive* — it only returns content for a span the user
+  // has explicitly rendered, and only while that render is still remembered.
+  // No guessing whether a token is a SMILES.
   const hover = vscode.languages.registerHoverProvider(
     [{ scheme: "file" }, { scheme: "untitled" }],
     { provideHover }
@@ -38,41 +65,53 @@ export function activate(context: vscode.ExtensionContext): void {
     "smilesHover.clearCache",
     () => {
       renderer.clearCache();
+      shown.clear();
       vscode.window.showInformationMessage("SMILES Hover: cache cleared.");
     }
   );
 
-  context.subscriptions.push(hover, showCmd, clearCmd);
+  // Nothing to re-hover in a document that's gone.
+  const closed = vscode.workspace.onDidCloseTextDocument((doc) =>
+    shown.delete(doc.uri.toString())
+  );
+
+  context.subscriptions.push(hover, showCmd, clearCmd, closed);
 }
 
 export function deactivate(): void {}
 
 /**
- * Hover provider — only returns the molecule when there's a pending render
- * matching the cursor's position. Otherwise silent.
+ * Hover provider — only returns a molecule the user has already asked for at
+ * this position, and only while it's still current. Otherwise silent.
  */
 function provideHover(
   doc: vscode.TextDocument,
   pos: vscode.Position
 ): vscode.Hover | undefined {
-  if (!pending) return;
-  if (pending.uri !== doc.uri.toString()) return;
-  if (Date.now() > pending.expiresAt) {
-    pending = undefined;
-    return;
-  }
-  if (!pending.range.contains(pos)) return;
+  const entries = live(doc.uri.toString());
+  if (!entries) return;
+
+  // Newest first: a re-render of the same span wins over an older one. The
+  // text check keeps a stale entry quiet after an edit shifts or rewrites the
+  // span it was anchored to.
+  const hit = [...entries]
+    .reverse()
+    .find(
+      (e) =>
+        e.range.contains(pos) && cleanSmiles(doc.getText(e.range)) === e.smiles
+    );
+  if (!hit) return;
 
   const dataUri =
     "data:image/svg+xml;base64," +
-    Buffer.from(pending.svg, "utf8").toString("base64");
+    Buffer.from(hit.svg, "utf8").toString("base64");
 
   const md = new vscode.MarkdownString();
   md.supportHtml = false;
-  md.appendMarkdown(`**SMILES** \`${escapeMd(pending.smiles)}\`\n\n`);
+  md.appendMarkdown(`**SMILES** \`${escapeMd(hit.smiles)}\`\n\n`);
   md.appendMarkdown(`![molecule](${dataUri})`);
 
-  return new vscode.Hover(md, pending.range);
+  return new vscode.Hover(md, hit.range);
 }
 
 async function showMoleculeForSelection(
@@ -106,13 +145,12 @@ async function showMoleculeForSelection(
       () => renderer.render(smiles)
     );
 
-    pending = {
-      uri: editor.document.uri.toString(),
-      range: sel,
+    remember(editor.document.uri.toString(), {
+      range: new vscode.Range(sel.start, sel.end),
       smiles,
       svg,
-      expiresAt: Date.now() + 60_000,
-    };
+      expiresAt: Date.now() + retentionMs(),
+    });
 
     await vscode.commands.executeCommand("editor.action.showHover");
   } catch (err) {
@@ -122,6 +160,18 @@ async function showMoleculeForSelection(
       }`
     );
   }
+}
+
+/**
+ * Store a molecule for this document, replacing any entry covering the same
+ * span so repeated renders don't pile up.
+ */
+function remember(uri: string, entry: ShownMolecule): void {
+  const entries = (live(uri) ?? []).filter(
+    (e) => !e.range.isEqual(entry.range)
+  );
+  entries.push(entry);
+  shown.set(uri, entries.slice(-MAX_PER_DOC));
 }
 
 function escapeMd(s: string): string {
