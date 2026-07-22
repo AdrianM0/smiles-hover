@@ -64,10 +64,14 @@ terminal, run the install command in the remote session.
 1. Select a SMILES string.
 2. Press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover: Show
    Molecule for Selection**.
-3. The structure appears in a hover over the selection, and stays there for 15
-   minutes — hover that span again any time within the window and the molecule
-   comes straight back, no re-render and no repeated keypress. Every span you
-   render in a file stays live, not just the last one.
+3. The structure appears in a hover over the selection.
+
+A molecule is remembered for 15 minutes once you've rendered it, and remembered
+by its SMILES rather than by where you rendered it — so from then on *every*
+occurrence of that string hovers: further down the file, in other files, and
+after edits move it around. Render one cell of a SMILES column and the whole
+column comes alive. Matching is on whole delimited tokens, so `CCO` won't light
+up inside `CCOCC` or inside the word `Cocoa`.
 
 Selections are cleaned before rendering — surrounding quotes, trailing commas,
 and escape sequences like `\n` or `\"` are stripped — so grabbing a value
@@ -129,6 +133,7 @@ themes.
 ```bash
 npm install
 npm run compile   # vendors RDKit's WASM into vendor/, then runs tsc
+npm test          # unit tests for selection cleaning and token matching
 ```
 
 Press `F5` in VS Code to launch an Extension Development Host.

@@ -3,6 +3,7 @@
 .github/**
 src/**
 scripts/**
+tests/**
 images/**
 !images/icon.png
 node_modules/**
