@@ -2,6 +2,21 @@
 
 ## 1.1.0
 
+- **Jupyter notebooks**, in cell sources and cell outputs alike. Sources —
+  code and markdown — behave like any file; every visible cell is scanned, and
+  each is its own document, so edits elsewhere don't disturb it.
+- **Output too.** Output is DOM in a webview, where no hover provider reaches,
+  so a notebook renderer extending the built-in one handles it: molecules in
+  `print()` output and in `df.head()` tables get a dotted underline and draw on
+  hover. It shares the detection code with the editor path and asks the
+  extension host for verdicts and pictures, leaving RDKit's 7 MB out of the
+  webview. Only mime types the built-in renderer draws are covered.
+- A line that names SMILES vouches for its values, so `MolFromSmiles("CCO")`
+  and `smiles = ["CCO", "CCN"]` are drawn despite being short. A `smiles`
+  column header does the same for a whole printed table.
+
+## 1.0.0
+
 - **Molecules are found for you.** Every SMILES on screen is detected and drawn
   as you scroll and type, so hovering one shows it — nothing to select, no
   keypress. A SMILES column is live the moment it scrolls into view.
@@ -18,17 +33,6 @@
   `smilesHover.autoDetectMinLength` characters (default 4); prose wants both.
   So a SMILES column comes alive whole while a package-lock full of `"ISC"`
   stays quiet.
-- **Jupyter notebooks**, in cell sources and cell outputs alike. Sources —
-  code and markdown — behave like any file; every visible cell is scanned, and
-  each is its own document, so edits elsewhere don't disturb it.
-- **Output too.** Output is DOM in a webview, where no hover provider reaches,
-  so a notebook renderer extending the built-in one handles it: molecules in
-  `print()` output and in `df.head()` tables get a dotted underline and draw on
-  hover. It shares the detection code with the editor path and asks the
-  extension host for verdicts and pictures, leaving RDKit's 7 MB out of the
-  webview. Only mime types the built-in renderer draws are covered.
-- A line that names SMILES vouches for its values, so `MolFromSmiles("CCO")`
-  and `smiles = ["CCO", "CCN"]` are drawn despite being short.
 - Selecting something that isn't a SMILES no longer raises an error dialog —
   it says so in the status bar.
 - New: `smilesHover.autoDetect`, `smilesHover.maxPrerender`, and **SMILES
