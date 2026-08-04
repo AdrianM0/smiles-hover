@@ -8,6 +8,6 @@ images/**
 !images/icon.png
 node_modules/**
 **/*.map
-**/tsconfig.json
+**/tsconfig*.json
 **/.gitignore
 **/*.vsix

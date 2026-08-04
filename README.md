@@ -4,8 +4,9 @@
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/adrianm0.smiles-hover)](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text —
-and see the 2D structure rendered with **RDKit** in **ChemDraw style**.
+Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, Jupyter
+notebooks, plain text — and see the 2D structure rendered with **RDKit** in
+**ChemDraw style**.
 Molecules on screen are found and drawn before you reach for them; anything
 that isn't chemistry is silently ignored.
 
@@ -79,8 +80,17 @@ short a token may be depends on where it sits:
 - **Prose** — running text or an expression. Needs both, or eight-plus
   characters of pure chain.
 
-Lower `autoDetectMinLength` to `3` if you write bare `CCO` in prose. Anything
+A line that names SMILES vouches for its values, so `Chem.MolFromSmiles("CCO")`
+and `smiles = ["CCO", "CCN"]` are drawn even though `CCO` is short. Lower
+`autoDetectMinLength` to `3` if you write bare `CCO` in prose. Anything
 detection skips is still one selection and `Ctrl+K M` away.
+
+**Jupyter notebooks** work in cell sources and cell outputs alike. Sources —
+code and markdown — behave exactly like a file. Outputs are DOM in a webview
+rather than a document, so a separate renderer handles them: molecules printed
+by `print(smi)` or shown in a `df.head()` table get a dotted underline, and
+hovering one draws it. A `smiles` column header vouches for the cells beneath
+it, so short entries like `CCO` are picked up there too.
 
 **Rendering by hand.** For a SMILES buried inside a longer string, select it
 and press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover:
@@ -148,7 +158,14 @@ Color presets:
    for bond width and font size, which are calibrated for paper and read as
    spidery on screen.
 3. The SVG is base64-encoded into a `data:` URI and embedded in the hover
-   markdown. No webview, no temp files, no subprocess.
+   markdown. No temp files, no subprocess.
+4. Cell output is the exception: no hover provider reaches into a webview, so
+   [src/output-renderer.ts](src/output-renderer.ts) runs there instead,
+   extending the built-in output renderer. It imports the same
+   [src/scan.ts](src/scan.ts), asks the host which tokens RDKit accepts, and
+   requests a picture per hover ([src/output-messaging.ts](src/output-messaging.ts)).
+   RDKit stays in the extension host — 7 MB of WASM has no business in every
+   notebook webview.
 
 The background is always white, so molecules read the same in light and dark
 themes.
@@ -181,6 +198,9 @@ publishes to the Marketplace — see
 ## Limitations
 
 - No InChI, no reaction SMARTS.
+- In notebook output, only mime types the built-in renderer draws are covered
+  (plain text, stdout/stderr, HTML, markdown). An output drawn by some other
+  renderer — a plotly widget, say — is out of reach.
 - Auto-detection is conservative with short featureless tokens, because `CNN`,
   `ISC` and `CSS` are valid molecules and much more often not meant as ones.
   Put them under a `smiles` column header, on a line of their own, after a

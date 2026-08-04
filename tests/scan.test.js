@@ -62,6 +62,13 @@ test("a line that says `smiles` means what it says", () => {
   assert.deepEqual(texts("  CCO  "), ["CCO"]);
 });
 
+test("a call that takes a SMILES vouches for its argument", () => {
+  assert.deepEqual(texts('mol = Chem.MolFromSmiles("CCO")'), ["CCO"]);
+  assert.deepEqual(texts('smiles = ["CCO", "CCN"]'), ["CCO", "CCN"]);
+  // The word alone isn't a claim about anything on the line.
+  assert.deepEqual(texts("# convert the smiles to mols"), []);
+});
+
 test("a SMILES column header vouches for every row under it", () => {
   assert.ok(declaresSmilesColumn("smiles,name,mw"));
   assert.ok(declaresSmilesColumn('"canonical_smiles"\t"id"'));

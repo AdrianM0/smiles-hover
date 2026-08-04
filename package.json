@@ -30,7 +30,9 @@
     "chemistry",
     "rdkit",
     "molecule",
-    "cheminformatics"
+    "cheminformatics",
+    "jupyter",
+    "notebook"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -119,6 +121,24 @@
         "title": "SMILES Hover: Toggle Automatic Detection"
       }
     ],
+    "notebookRenderers": [
+      {
+        "id": "smiles-hover-output",
+        "displayName": "SMILES Hover (cell output)",
+        "entrypoint": {
+          "extends": "vscode.builtin-renderer",
+          "path": "./out/renderer/output.js"
+        },
+        "requiresMessaging": "optional",
+        "mimeTypes": [
+          "text/plain",
+          "text/html",
+          "text/markdown",
+          "application/vnd.code.notebook.stdout",
+          "application/vnd.code.notebook.stderr"
+        ]
+      }
+    ],
     "keybindings": [
       {
         "command": "smilesHover.showSelection",
@@ -140,7 +160,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "vendor": "node scripts/vendor-rdkit.js",
-    "compile": "npm run vendor && tsc -p ./",
+    "compile": "npm run vendor && tsc -p ./ && npm run compile:renderer",
+    "compile:renderer": "tsc -p tsconfig.renderer.json && esbuild src/output-renderer.ts --bundle --format=esm --target=es2020 --outfile=out/renderer/output.js",
     "test": "npm run compile && node --test \"tests/*.test.js\"",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
@@ -152,7 +173,9 @@
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
     "gifenc": "^1.0.3",
+    "jsdom": "^30.0.1",
     "typescript": "^5.3.0"
   },
   "dependencies": {

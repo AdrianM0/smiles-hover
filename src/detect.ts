@@ -22,12 +22,12 @@ export class Detector {
   }
 
   /** Coalesce the bursts that scrolling and typing produce into one scan. */
-  schedule(editor: vscode.TextEditor | undefined, delayMs = 250): void {
+  schedule(delayMs = 250): void {
     if (this.timer) clearTimeout(this.timer);
-    if (!editor || !config().autoDetect) return;
+    if (!config().autoDetect) return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      void this.scan(editor);
+      void this.scan();
     }, delayMs);
   }
 
@@ -56,27 +56,23 @@ export class Detector {
   }
 
   /**
-   * Validate and draw everything in view, plus a margin so a small scroll
-   * lands on warm ground. Yields between molecules to keep the host free.
+   * Validate and draw everything in view. Yields between molecules to keep
+   * the host free.
    */
-  private async scan(editor: vscode.TextEditor): Promise<void> {
+  private async scan(): Promise<void> {
     const cfg = config();
     const mine = ++this.generation;
-    const doc = editor.document;
-    const declared = hasSmilesHeader(doc);
 
     const candidates = new Set<string>();
-    for (const range of editor.visibleRanges) {
-      const first = Math.max(0, range.start.line - cfg.margin);
-      const last = Math.min(doc.lineCount - 1, range.end.line + cfg.margin);
+    outer: for (const { doc, first, last } of visibleRegions(cfg.margin)) {
+      const declared = hasSmilesHeader(doc);
       for (let n = first; n <= last; n++) {
         const line = doc.lineAt(n).text;
         for (const c of findCandidates(line, cfg.minLength, declared)) {
           candidates.add(c.text);
         }
-        if (candidates.size >= cfg.maxCandidates) break;
+        if (candidates.size >= cfg.maxCandidates) break outer;
       }
-      if (candidates.size >= cfg.maxCandidates) break;
     }
 
     let drawn = 0;
@@ -94,6 +90,47 @@ export class Detector {
     }
   }
 }
+
+interface Region {
+  doc: vscode.TextDocument;
+  first: number;
+  last: number;
+}
+
+/**
+ * What to scan: the viewport plus a margin so a small scroll lands on warm
+ * ground. In a notebook that means every visible cell — each is its own
+ * document, and cells are short enough to take whole.
+ */
+function visibleRegions(margin: number): Region[] {
+  const notebook = vscode.window.activeNotebookEditor;
+  if (notebook) {
+    const cells = notebook.notebook.getCells();
+    const out: Region[] = [];
+    for (const range of notebook.visibleRanges) {
+      const first = Math.max(0, range.start - CELL_MARGIN);
+      const last = Math.min(cells.length - 1, range.end + CELL_MARGIN);
+      for (let i = first; i <= last; i++) {
+        const doc = cells[i].document;
+        out.push({ doc, first: 0, last: Math.min(doc.lineCount, MAX_CELL) - 1 });
+      }
+    }
+    return out;
+  }
+
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return [];
+  const doc = editor.document;
+  return editor.visibleRanges.map((range) => ({
+    doc,
+    first: Math.max(0, range.start.line - margin),
+    last: Math.min(doc.lineCount - 1, range.end.line + margin),
+  }));
+}
+
+/** Cells either side of the visible ones, and lines taken from each cell. */
+const CELL_MARGIN = 2;
+const MAX_CELL = 500;
 
 /** Checked on the first few lines, so a comment doesn't hide the header. */
 function hasSmilesHeader(doc: vscode.TextDocument): boolean {

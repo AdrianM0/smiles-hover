@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { Detector } from "./detect";
+import { serveOutputRenderer } from "./output-messaging";
 import { SmilesRenderer } from "./renderer";
 import { cleanSmiles, tokenOccurrenceAt } from "./smiles";
 
@@ -58,7 +59,13 @@ export function activate(context: vscode.ExtensionContext): void {
   detector = new Detector(renderer);
 
   const hover = vscode.languages.registerHoverProvider(
-    [{ scheme: "file" }, { scheme: "untitled" }],
+    [
+      { scheme: "file" },
+      { scheme: "untitled" },
+      // Notebook cells and the interactive window are their own documents.
+      { scheme: "vscode-notebook-cell" },
+      { scheme: "vscode-interactive-input" },
+    ],
     { provideHover }
   );
 
@@ -73,7 +80,7 @@ export function activate(context: vscode.ExtensionContext): void {
       renderer.clearCache();
       remembered.clear();
       vscode.window.showInformationMessage("SMILES Hover: cache cleared.");
-      detector.schedule(vscode.window.activeTextEditor, 0);
+      detector.schedule(0);
     }
   );
 
@@ -93,18 +100,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // Keep what's on screen already drawn. These fire in bursts; the detector
   // coalesces them.
   const rescan = [
-    vscode.window.onDidChangeActiveTextEditor((e) => detector.schedule(e, 50)),
-    vscode.window.onDidChangeTextEditorVisibleRanges((e) =>
-      detector.schedule(e.textEditor)
+    vscode.window.onDidChangeActiveTextEditor(() => detector.schedule(50)),
+    vscode.window.onDidChangeTextEditorVisibleRanges(() => detector.schedule()),
+    vscode.window.onDidChangeActiveNotebookEditor(() => detector.schedule(50)),
+    vscode.window.onDidChangeNotebookEditorVisibleRanges(() =>
+      detector.schedule()
     ),
+    // Cells added, removed, or run — outputs aren't hoverable, but the sources
+    // around them have moved.
+    vscode.workspace.onDidChangeNotebookDocument(() => detector.schedule()),
     vscode.workspace.onDidChangeTextDocument((e) => {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && e.document === editor.document) detector.schedule(editor);
+      if (isOnScreen(e.document)) detector.schedule();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("smilesHover")) {
-        detector.schedule(vscode.window.activeTextEditor, 0);
-      }
+      if (e.affectsConfiguration("smilesHover")) detector.schedule(0);
     }),
   ];
 
@@ -114,13 +123,21 @@ export function activate(context: vscode.ExtensionContext): void {
     clearCmd,
     toggleCmd,
     detector,
+    serveOutputRenderer(renderer),
     ...rescan
   );
 
-  detector.schedule(vscode.window.activeTextEditor, 0);
+  detector.schedule(0);
 }
 
 export function deactivate(): void {}
+
+/** Is this document one the user can currently see? Cells count. */
+function isOnScreen(doc: vscode.TextDocument): boolean {
+  if (doc === vscode.window.activeTextEditor?.document) return true;
+  const notebook = vscode.window.activeNotebookEditor?.notebook;
+  return doc.uri.scheme === "vscode-notebook-cell" && !!notebook;
+}
 
 /**
  * Hover provider. Auto-detection first — the token under the cursor, if RDKit

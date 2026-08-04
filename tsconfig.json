@@ -9,5 +9,7 @@
     "strict": true,
     "esModuleInterop": true
   },
-  "exclude": ["node_modules", ".vscode-test"]
+  // The output renderer is webview code — DOM types, bundled separately.
+  // See tsconfig.renderer.json.
+  "exclude": ["node_modules", ".vscode-test", "src/output-renderer.ts"]
 }

@@ -135,9 +135,13 @@ function count(s: string, ch: string): number {
   return n;
 }
 
-/** Does the line read as `smiles: <value>` / `"SMILES" = <value>`? */
+/**
+ * Does the line say the value is a SMILES — `smiles: x`, `"SMILES" = x`, or a
+ * call that takes one? No word boundary in front, so `MolFromSmiles("CCO")`,
+ * the most-typed line in any chemistry notebook, counts.
+ */
 function hasSmilesKey(line: string): boolean {
-  return /\bsmiles\b["'`\]]*\s*[:=]/i.test(line);
+  return /smiles["'`\]]*\s*[:=(]/i.test(line);
 }
 
 /**
@@ -146,7 +150,9 @@ function hasSmilesKey(line: string): boolean {
  */
 export function declaresSmilesColumn(headerLine: string): boolean {
   if (headerLine.length > MAX_LINE) return false;
-  const fields = headerLine.split(/[\t,;|]/);
+  // Two or more spaces is a column gutter — that's how printed DataFrames and
+  // aligned tables separate fields, where a CSV would use a comma.
+  const fields = headerLine.split(/[\t,;|]|\s{2,}/);
   if (fields.length < 2) return false;
   // A whole field that is the word, give or take a qualifier:
   // `canonical_smiles`, `"smiles"`.
@@ -154,6 +160,24 @@ export function declaresSmilesColumn(headerLine: string): boolean {
     /^["'`\s]*\w*[_ ]?smiles?[_ ]?\w*["'`\s]*$/i.test(f)
   );
 }
+
+/**
+ * Does a block of text — a cell output, a table — announce SMILES anywhere in
+ * it? Output is walked a text node at a time, so a column header and its
+ * values never share a line; this is what carries the header's promise down
+ * to the cells.
+ */
+export function blockDeclaresSmiles(text: string): boolean {
+  return text
+    .split("\n", MAX_DECLARING_LINES)
+    .some(
+      (line) =>
+        declaresSmilesColumn(line) || /^\s*["']?smiles?["']?\s*$/i.test(line)
+    );
+}
+
+/** A header is near the top, or it isn't a header. */
+const MAX_DECLARING_LINES = 40;
 
 function contextOf(line: string, start: number, end: number): Context {
   const prev = lastSignificant(line.slice(0, start));
