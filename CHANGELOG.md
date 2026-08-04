@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0
+## 1.1.0
 
 - **Molecules are found for you.** Every SMILES on screen is detected and drawn
   as you scroll and type, so hovering one shows it — nothing to select, no
