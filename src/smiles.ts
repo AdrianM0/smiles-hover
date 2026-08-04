@@ -23,7 +23,7 @@
  * `CCOCC` (a different molecule) or inside the word `Cocoa`. SMILES in the
  * wild sit inside quotes, whitespace or delimiters, all outside this class.
  */
-const SMILES_CHAR = /[A-Za-z0-9@+\-[\]()\\/#=%.:$*]/;
+export const SMILES_CHAR = /[A-Za-z0-9@+\-[\]()\\/#=%.:$*]/;
 
 /**
  * Find the occurrence of `needle` in `line` that `character` sits inside, as a

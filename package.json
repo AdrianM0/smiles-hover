@@ -1,8 +1,8 @@
 {
   "name": "smiles-hover",
   "displayName": "SMILES Hover",
-  "description": "Select a SMILES string and see its 2D molecular structure, rendered with RDKit in ChemDraw style. No setup required.",
-  "version": "0.5.0",
+  "description": "Hover any SMILES string to see its 2D molecular structure, rendered with RDKit in ChemDraw style. Molecules on screen are found automatically. No setup required.",
+  "version": "1.0.0",
   "publisher": "adrianm0",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -40,6 +40,23 @@
     "configuration": {
       "title": "SMILES Hover",
       "properties": {
+        "smilesHover.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Find SMILES on screen automatically and draw them ahead of time, so hovering any molecule shows it. Tokens RDKit doesn't parse are ignored. Turn off to only show molecules you render explicitly."
+        },
+        "smilesHover.autoDetectMinLength": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "Shortest featureless token auto-detection will consider. Short uppercase strings are valid molecules but rarely meant as ones (CNN, ISC, CSS). Exempt, at any length: values after a `smiles:` key, a line holding nothing else, and files whose header row names a SMILES column."
+        },
+        "smilesHover.maxPrerender": {
+          "type": "number",
+          "default": 40,
+          "minimum": 0,
+          "description": "How many molecules to draw ahead of time per screenful. Beyond this, detected molecules are still hoverable, just drawn on demand."
+        },
         "smilesHover.imageWidth": {
           "type": "number",
           "default": 500,
@@ -96,6 +113,10 @@
       {
         "command": "smilesHover.clearCache",
         "title": "SMILES Hover: Clear Cache"
+      },
+      {
+        "command": "smilesHover.toggleAutoDetect",
+        "title": "SMILES Hover: Toggle Automatic Detection"
       }
     ],
     "keybindings": [

@@ -4,9 +4,10 @@
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/adrianm0.smiles-hover)](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Select a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text —
-press `Ctrl+K M`, and see the 2D structure rendered with **RDKit** in
-**ChemDraw style**.
+Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text —
+and see the 2D structure rendered with **RDKit** in **ChemDraw style**.
+Molecules on screen are found and drawn before you reach for them; anything
+that isn't chemistry is silently ignored.
 
 No Python, no `pip install`, no configuration. RDKit ships inside the
 extension as WebAssembly.
@@ -30,8 +31,8 @@ Or open the
 [Marketplace page](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
 and click **Install**.
 
-That's everything — there's nothing else to set up. Select a SMILES string and
-press `Ctrl+K M`.
+That's everything — there's nothing else to set up. Open a file with molecules
+in it and hover one.
 
 ### Cursor, VSCodium, Windsurf
 
@@ -61,21 +62,36 @@ terminal, run the install command in the remote session.
 
 ## Usage
 
-1. Select a SMILES string.
-2. Press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover: Show
-   Molecule for Selection**.
-3. The structure appears in a hover over the selection.
+Just hover. Everything on screen is scanned as you scroll and type, and every
+molecule found is drawn ahead of time, so the structure is already waiting. A
+SMILES column comes alive the moment it scrolls into view.
 
-A molecule is remembered for 15 minutes once you've rendered it, and remembered
-by its SMILES rather than by where you rendered it — so from then on *every*
-occurrence of that string hovers: further down the file, in other files, and
-after edits move it around. Render one cell of a SMILES column and the whole
-column comes alive. Matching is on whole delimited tokens, so `CCO` won't light
-up inside `CCOCC` or inside the word `Cocoa`.
+**What counts as a molecule.** Only tokens RDKit parses, so prose, identifiers
+and paths never hover. The ambiguous cases are short uppercase strings — `CNN`,
+`ISC`, `CSS`, `SNP` are all valid molecules and none are meant as one — so how
+short a token may be depends on where it sits:
 
-Selections are cleaned before rendering — surrounding quotes, trailing commas,
-and escape sequences like `\n` or `\"` are stripped — so grabbing a value
-straight out of a JSONL dump works fine.
+- **Declared** — after a `smiles:` key, alone on its line, or in a file whose
+  header row names a SMILES column. Any length.
+- **A field** — a quoted string or a CSV/TSV cell. Needs structure (a ring,
+  branch, bracket atom or bond) or `smilesHover.autoDetectMinLength`
+  characters, default 4. `CCCC` and `CC(=O)O` pass; `ISC` doesn't.
+- **Prose** — running text or an expression. Needs both, or eight-plus
+  characters of pure chain.
+
+Lower `autoDetectMinLength` to `3` if you write bare `CCO` in prose. Anything
+detection skips is still one selection and `Ctrl+K M` away.
+
+**Rendering by hand.** For a SMILES buried inside a longer string, select it
+and press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover:
+Show Molecule for Selection**. That molecule stays hoverable at every
+occurrence of its string for 15 minutes (`smilesHover.retentionMinutes`).
+Selections are cleaned first — quotes, trailing commas, escapes like `\n` — so
+grabbing a value out of a JSONL dump works. A selection that isn't a molecule
+just reports in the status bar.
+
+Command Palette → **SMILES Hover: Toggle Automatic Detection** turns scanning
+off.
 
 The first render loads the WASM module (~200 ms); everything after is a few
 milliseconds, and results are cached per `(smiles, size, preset)`. Command
@@ -83,15 +99,18 @@ Palette → **SMILES Hover: Clear Cache** to reset.
 
 ## Configuration
 
-| Setting                       | Default    | Description                                   |
-| ----------------------------- | ---------- | --------------------------------------------- |
-| `smilesHover.autoSize`        | `true`     | Size the canvas to the molecule (see below).  |
-| `smilesHover.maxHoverWidth`   | `460`      | Max displayed width inside the hover, px.     |
-| `smilesHover.maxHoverHeight`  | `240`      | Max displayed height inside the hover, px.    |
-| `smilesHover.imageWidth`      | `500`      | Base render width in px.                      |
-| `smilesHover.imageHeight`     | `350`      | Base render height in px.                     |
-| `smilesHover.colorPreset`     | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette. |
-| `smilesHover.retentionMinutes`| `15`       | How long a render stays hoverable, minutes.   |
+| Setting                            | Default    | Description                                      |
+| ---------------------------------- | ---------- | ------------------------------------------------ |
+| `smilesHover.autoDetect`           | `true`     | Find and draw molecules on screen automatically. |
+| `smilesHover.autoDetectMinLength`  | `4`        | Shortest bare token considered a molecule.       |
+| `smilesHover.maxPrerender`         | `40`       | Molecules drawn ahead per screenful.             |
+| `smilesHover.autoSize`             | `true`     | Size the canvas to the molecule (see below).     |
+| `smilesHover.maxHoverWidth`        | `460`      | Max displayed width inside the hover, px.        |
+| `smilesHover.maxHoverHeight`       | `240`      | Max displayed height inside the hover, px.       |
+| `smilesHover.imageWidth`           | `500`      | Base render width in px.                         |
+| `smilesHover.imageHeight`          | `350`      | Base render height in px.                        |
+| `smilesHover.colorPreset`          | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette.    |
+| `smilesHover.retentionMinutes`     | `15`       | How long a hand-render stays hoverable, minutes. |
 
 With `autoSize` on (the default), the whole structure is always visible at a
 legible scale: the canvas area grows with the atom count, and its aspect ratio
@@ -116,7 +135,13 @@ Color presets:
 
 ## How it works
 
-1. The command reads your selection and cleans it ([src/smiles.ts](src/smiles.ts)).
+1. [src/scan.ts](src/scan.ts) splits each visible line into SMILES-shaped
+   tokens and drops what can't be chemistry, by grammar then by context.
+   [src/detect.ts](src/detect.ts) puts the survivors past RDKit and draws the
+   ones that parse, debounced against scrolling and typing. Nothing is stored
+   per document — the caches are keyed by the string itself, so edits need no
+   invalidation. Hand-picked selections are cleaned instead
+   ([src/smiles.ts](src/smiles.ts)).
 2. [src/renderer.ts](src/renderer.ts) hands it to RDKit's MinimalLib WASM build,
    using CoordGen for ChemDraw-like 2D geometry and draw options that
    approximate RDKit's ACS 1996 preset — bumped above the ACS print defaults
@@ -133,7 +158,7 @@ themes.
 ```bash
 npm install
 npm run compile   # vendors RDKit's WASM into vendor/, then runs tsc
-npm test          # unit tests for selection cleaning and token matching
+npm test          # unit tests for detection, selection cleaning, token matching
 ```
 
 Press `F5` in VS Code to launch an Extension Development Host.
@@ -156,7 +181,13 @@ publishes to the Marketplace — see
 ## Limitations
 
 - No InChI, no reaction SMARTS.
-- Invalid SMILES surface RDKit's parse error in a notification.
+- Auto-detection is conservative with short featureless tokens, because `CNN`,
+  `ISC` and `CSS` are valid molecules and much more often not meant as ones.
+  Put them under a `smiles` column header, on a line of their own, after a
+  `smiles:` key, or lower `autoDetectMinLength`.
+- A selection you render by hand and RDKit rejects reports quietly in the
+  status bar; a molecule that parses but fails to draw still raises a
+  notification.
 - The `.vsix` is ~7 MB, nearly all of it the RDKit WASM binary.
 
 ## License

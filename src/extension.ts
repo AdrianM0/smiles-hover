@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
+import { Detector } from "./detect";
 import { SmilesRenderer } from "./renderer";
 import { cleanSmiles, tokenOccurrenceAt } from "./smiles";
 
 let renderer: SmilesRenderer;
+let detector: Detector;
 
 /**
  * A molecule the user has rendered, kept so it can be hovered again.
@@ -53,10 +55,8 @@ function live(): RememberedMolecule[] {
 
 export function activate(context: vscode.ExtensionContext): void {
   renderer = new SmilesRenderer(context.extensionPath);
+  detector = new Detector(renderer);
 
-  // Hover provider is *passive* — it only returns content for a molecule the
-  // user has explicitly rendered, and only while that render is still
-  // remembered. No guessing whether a token is a SMILES.
   const hover = vscode.languages.registerHoverProvider(
     [{ scheme: "file" }, { scheme: "untitled" }],
     { provideHover }
@@ -73,19 +73,86 @@ export function activate(context: vscode.ExtensionContext): void {
       renderer.clearCache();
       remembered.clear();
       vscode.window.showInformationMessage("SMILES Hover: cache cleared.");
+      detector.schedule(vscode.window.activeTextEditor, 0);
     }
   );
 
-  context.subscriptions.push(hover, showCmd, clearCmd);
+  const toggleCmd = vscode.commands.registerCommand(
+    "smilesHover.toggleAutoDetect",
+    async () => {
+      const cfg = vscode.workspace.getConfiguration("smilesHover");
+      const next = !cfg.get<boolean>("autoDetect", true);
+      await cfg.update("autoDetect", next, vscode.ConfigurationTarget.Global);
+      vscode.window.setStatusBarMessage(
+        `SMILES Hover: auto-detect ${next ? "on" : "off"}.`,
+        3000
+      );
+    }
+  );
+
+  // Keep what's on screen already drawn. These fire in bursts; the detector
+  // coalesces them.
+  const rescan = [
+    vscode.window.onDidChangeActiveTextEditor((e) => detector.schedule(e, 50)),
+    vscode.window.onDidChangeTextEditorVisibleRanges((e) =>
+      detector.schedule(e.textEditor)
+    ),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && e.document === editor.document) detector.schedule(editor);
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("smilesHover")) {
+        detector.schedule(vscode.window.activeTextEditor, 0);
+      }
+    }),
+  ];
+
+  context.subscriptions.push(
+    hover,
+    showCmd,
+    clearCmd,
+    toggleCmd,
+    detector,
+    ...rescan
+  );
+
+  detector.schedule(vscode.window.activeTextEditor, 0);
 }
 
 export function deactivate(): void {}
 
 /**
- * Hover provider — shows a remembered molecule when the cursor is on an
- * occurrence of its SMILES. Otherwise silent.
+ * Hover provider. Auto-detection first — the token under the cursor, if RDKit
+ * says it's chemistry — then anything the user rendered by hand, which covers
+ * SMILES the token scanner won't pick out on its own.
  */
-function provideHover(
+async function provideHover(
+  doc: vscode.TextDocument,
+  pos: vscode.Position,
+  cancel: vscode.CancellationToken
+): Promise<vscode.Hover | undefined> {
+  const detected = await detector.moleculeAt(doc, pos);
+  if (cancel.isCancellationRequested) return;
+
+  if (detected) {
+    try {
+      const svg = await renderer.render(detected.smiles);
+      if (cancel.isCancellationRequested) return;
+      return new vscode.Hover(
+        moleculeMarkdown(detected.smiles, svg),
+        detected.range
+      );
+    } catch {
+      // Parses but won't draw. Fall through — a remembered entry may cover it.
+    }
+  }
+
+  return rememberedHover(doc, pos);
+}
+
+/** A molecule the user rendered by hand, re-located by its text. */
+function rememberedHover(
   doc: vscode.TextDocument,
   pos: vscode.Position
 ): vscode.Hover | undefined {
@@ -120,16 +187,18 @@ function provideHover(
     range = hit.anchor.range;
   }
 
+  return new vscode.Hover(moleculeMarkdown(hit.smiles, hit.svg), range);
+}
+
+function moleculeMarkdown(smiles: string, svg: string): vscode.MarkdownString {
   const dataUri =
-    "data:image/svg+xml;base64," +
-    Buffer.from(hit.svg, "utf8").toString("base64");
+    "data:image/svg+xml;base64," + Buffer.from(svg, "utf8").toString("base64");
 
   const md = new vscode.MarkdownString();
   md.supportHtml = false;
-  md.appendMarkdown(`**SMILES** \`${escapeMd(hit.smiles)}\`\n\n`);
+  md.appendMarkdown(`**SMILES** \`${escapeMd(smiles)}\`\n\n`);
   md.appendMarkdown(`![molecule](${dataUri})`);
-
-  return new vscode.Hover(md, range);
+  return md;
 }
 
 /**
@@ -162,6 +231,15 @@ async function showMoleculeForSelection(
   if (!smiles) {
     vscode.window.setStatusBarMessage(
       "SMILES Hover: selection is empty after cleaning.",
+      3000
+    );
+    return;
+  }
+
+  // Not a molecule isn't an error worth a dialog — it's just a selection.
+  if (!(await renderer.isValid(smiles))) {
+    vscode.window.setStatusBarMessage(
+      `SMILES Hover: not a SMILES — ${truncate(smiles, 40)}`,
       3000
     );
     return;

@@ -19,6 +19,8 @@ interface RDKitModule {
   version(): string;
   prefer_coordgen(yes: boolean): void;
   get_mol(smiles: string, details?: string): RDKitMol | null;
+  /** Not in every build; we only ever call it if it's there. */
+  disable_logging?(): void;
 }
 
 /**
@@ -74,6 +76,8 @@ const PRESETS: Record<string, Palette> = {
 
 export class SmilesRenderer {
   private cache = new Map<string, CacheEntry>();
+  /** Which strings RDKit accepts. Asked far more often than anything is drawn. */
+  private validity = new Map<string, boolean>();
   private rdkit: Promise<RDKitModule> | undefined;
   private vendorDir: string;
 
@@ -83,6 +87,38 @@ export class SmilesRenderer {
 
   clearCache(): void {
     this.cache.clear();
+    this.validity.clear();
+  }
+
+  /** Already-known verdicts, without loading RDKit or awaiting anything. */
+  knownValid(smiles: string): boolean | undefined {
+    return this.validity.get(smiles);
+  }
+
+  /** Does RDKit parse this as a molecule? Cached for the session. */
+  async isValid(smiles: string): Promise<boolean> {
+    const known = this.validity.get(smiles);
+    if (known !== undefined) return known;
+
+    let ok = false;
+    try {
+      const rdkit = await this.load();
+      let mol: RDKitMol | null = null;
+      try {
+        mol = rdkit.get_mol(smiles);
+        ok = !!mol && mol.is_valid() && mol.get_num_atoms() > 0;
+      } catch {
+        ok = false;
+      } finally {
+        mol?.delete();
+      }
+    } catch {
+      // RDKit unavailable — don't remember that as "not a molecule".
+      return false;
+    }
+
+    this.validity.set(smiles, ok);
+    return ok;
   }
 
   /**
@@ -103,6 +139,8 @@ export class SmilesRenderer {
         // CoordGen gives ChemDraw-like geometry; RDKit's default layout is
         // more utilitarian.
         mod.prefer_coordgen(true);
+        // Auto-detection asks about tokens that aren't molecules. Expected.
+        mod.disable_logging?.();
         return mod;
       })().catch((err: Error) => {
         // Don't cache a failed load — a reload might succeed.

@@ -3,3 +3,4 @@ out/
 vendor/
 *.vsix
 .vscode-test/
+test

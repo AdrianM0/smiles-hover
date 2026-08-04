@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0
+
+- **Molecules are found for you.** Every SMILES on screen is detected and drawn
+  as you scroll and type, so hovering one shows it — nothing to select, no
+  keypress. A SMILES column is live the moment it scrolls into view.
+- **Anything that isn't chemistry is ignored, silently.** Tokens are cut out by
+  character class, checked against the SMILES grammar's own rules (outside
+  brackets only ten element symbols are legal and only six letters may be
+  lowercase, which excludes essentially every English word), then confirmed by
+  RDKit. Across a page of mixed prose, code and data, only real molecules reach
+  the parser.
+- **Context decides the ambiguous cases.** `CNN`, `ISC`, `CSS` and `SNP` all
+  parse as molecules and none are meant as one. A `smiles:` key, a line of its
+  own, or a header row naming a SMILES column takes a token at face value; a
+  quoted string or CSV cell wants structure or
+  `smilesHover.autoDetectMinLength` characters (default 4); prose wants both.
+  So a SMILES column comes alive whole while a package-lock full of `"ISC"`
+  stays quiet.
+- Selecting something that isn't a SMILES no longer raises an error dialog —
+  it says so in the status bar.
+- New: `smilesHover.autoDetect`, `smilesHover.maxPrerender`, and **SMILES
+  Hover: Toggle Automatic Detection**. Manual rendering (`Ctrl+K M`) still
+  covers SMILES buried inside longer strings.
+
 ## 0.5.0
 
 - **A molecule is now remembered by its SMILES, not by where you rendered it.**
