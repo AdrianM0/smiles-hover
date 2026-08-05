@@ -182,6 +182,37 @@ function outputRoot(span: HTMLElement): HTMLElement {
 /** Below this a preview says nothing, so grow the output instead. */
 const MIN_PREVIEW = 120;
 
+/**
+ * Where the preview goes: inside the output's box, and only the part of that
+ * box currently on screen — a truncated or scrolled output reaches well past
+ * the viewport, and placing against its off-screen top puts the picture over
+ * the cell above. Returns `inline` when there's no room worth using.
+ */
+export function fitPreview(
+  span: { top: number; bottom: number; left: number },
+  box: { top: number; bottom: number; left: number; right: number; width: number },
+  view: { width: number; height: number }
+) {
+  const top = Math.max(box.top, 0);
+  const bottom = Math.min(box.bottom, view.height);
+  const above = span.top - top;
+  const below = bottom - span.bottom;
+  const room = Math.max(above, below) - 8;
+
+  const maxW = Math.max(MIN_PREVIEW, Math.min(460, box.width - 8));
+  const maxH = Math.max(MIN_PREVIEW, Math.min(240, room));
+  const wanted = below >= above ? span.bottom + 4 : span.top - maxH - 4;
+  const right = Math.min(box.right, view.width);
+
+  return {
+    inline: room < MIN_PREVIEW,
+    maxW,
+    maxH,
+    top: Math.min(Math.max(top, wanted), Math.max(top, bottom - maxH)),
+    left: Math.max(Math.max(box.left, 0), Math.min(span.left, right - maxW)),
+  };
+}
+
 class Tooltip {
   private readonly element: HTMLElement;
   private showing: string | undefined;
@@ -214,31 +245,26 @@ class Tooltip {
     this.place(span);
   }
 
-  /**
-   * Float inside the output's box when it has room; otherwise sit in flow at
-   * the end of it, growing the output. A one-line `print` has no room.
-   */
   private place(span: HTMLElement): void {
     const root = outputRoot(span);
-    const rect = span.getBoundingClientRect();
-    const box = root.getBoundingClientRect();
-    const above = rect.top - box.top;
-    const below = box.bottom - rect.bottom;
-    const room = Math.max(above, below) - 8;
+    const fit = fitPreview(
+      span.getBoundingClientRect(),
+      root.getBoundingClientRect(),
+      { width: window.innerWidth, height: window.innerHeight }
+    );
 
-    this.maxW = Math.max(MIN_PREVIEW, Math.min(460, box.width - 8));
-    this.maxH = Math.max(MIN_PREVIEW, Math.min(240, room));
-    this.element.style.maxWidth = `${this.maxW}px`;
+    this.maxW = fit.maxW;
+    this.maxH = fit.maxH;
+    this.element.style.maxWidth = `${fit.maxW}px`;
     this.element.hidden = false;
+    this.element.classList.toggle(INLINE, fit.inline);
 
-    if (room < MIN_PREVIEW) {
-      this.element.classList.add(INLINE);
+    if (fit.inline) {
       root.append(this.element);
     } else {
-      this.element.classList.remove(INLINE);
       document.body.append(this.element);
-      this.element.style.top = `${below >= above ? rect.bottom + 4 : rect.top - this.maxH - 4}px`;
-      this.element.style.left = `${Math.max(box.left, Math.min(rect.left, box.right - this.maxW))}px`;
+      this.element.style.top = `${fit.top}px`;
+      this.element.style.left = `${fit.left}px`;
     }
     this.resize();
   }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.5
+
+- **Fix: the preview could still land over the cell above.** A truncated or
+  scrolled output's element reaches well past the viewport, and the room above
+  the token was measured against that off-screen top. Placement now uses only
+  the visible part of the output box.
+
 ## 1.1.4
 
 - **Fix: output previews were drawn behind the next cell.** The outputs webview

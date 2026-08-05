@@ -177,3 +177,38 @@ test("with no room to float, the preview grows the output instead", async () => 
   assert.ok(tooltip.classList.contains("smiles-hover-inline"));
   assert.notEqual(tooltip.parentElement, out.dom.window.document.body);
 });
+
+test("the preview never leaves the visible part of its output", async () => {
+  const url = require("node:url").pathToFileURL(
+    require.resolve("../out/renderer/output.js")
+  );
+  const { fitPreview } = await import(`${url}?fit`);
+  const view = { width: 1000, height: 800 };
+
+  // A truncated output reaching far above the viewport: the room above is
+  // off-screen and belongs to the cell above, so the preview must go below.
+  const scrolled = fitPreview(
+    { top: 100, bottom: 116, left: 20 },
+    { top: -4000, bottom: 700, left: 0, right: 900, width: 900 },
+    view
+  );
+  assert.equal(scrolled.inline, false);
+  assert.ok(scrolled.top >= 0 && scrolled.top + scrolled.maxH <= 700);
+
+  // Room above, none below: placed above, still inside the box.
+  const bottomEdge = fitPreview(
+    { top: 600, bottom: 616, left: 20 },
+    { top: 200, bottom: 620, left: 0, right: 900, width: 900 },
+    view
+  );
+  assert.ok(bottomEdge.top >= 200 && bottomEdge.top + bottomEdge.maxH <= 620);
+
+  // A one-line output has no room either way.
+  assert.ok(
+    fitPreview(
+      { top: 300, bottom: 316, left: 20 },
+      { top: 298, bottom: 318, left: 0, right: 900, width: 900 },
+      view
+    ).inline
+  );
+});
