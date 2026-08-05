@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.6
+
+- **Fix: no preview on one-line outputs.** Showing the picture in flow grows
+  the output, VS Code reflows the notebook, and the token slides out from
+  under the cursor — the resulting `mouseout` tore the preview down as fast as
+  it appeared. Hiding is now deferred and cancelled if the cursor is still
+  there, and re-hovering the same molecule no longer touches the DOM.
+
 ## 1.1.5
 
 - **Fix: the preview could still land over the cell above.** A truncated or

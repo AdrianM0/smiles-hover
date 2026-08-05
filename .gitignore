@@ -4,3 +4,5 @@ vendor/
 *.vsix
 .vscode-test/
 test
+test*.ipynb
+.venv/

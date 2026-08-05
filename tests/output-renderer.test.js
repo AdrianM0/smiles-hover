@@ -212,3 +212,24 @@ test("the preview never leaves the visible part of its output", async () => {
     ).inline
   );
 });
+
+test("a spurious mouseout doesn't tear the preview down", async () => {
+  // Showing in flow reflows the notebook, which can move the token off the
+  // cursor and fire mouseout immediately.
+  const out = await mount();
+  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  out.send({ type: "checked", valid: { CCO: true } });
+
+  const span = out.hits()[0];
+  const over = () =>
+    span.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+  over();
+  span.dispatchEvent(new out.dom.window.MouseEvent("mouseout", { bubbles: true }));
+
+  const shown = () =>
+    out.dom.window.document.querySelector(".smiles-hover-tooltip") !== null;
+  assert.ok(shown(), "still up right after the mouseout");
+  over(); // the cursor never actually left
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(shown(), "the deferred hide was cancelled");
+});

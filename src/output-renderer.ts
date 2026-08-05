@@ -50,7 +50,9 @@ export function activate(context: RendererContext): void {
   });
   document.addEventListener("mouseout", (event) => {
     const hit = (event.target as HTMLElement | null)?.closest?.(`.${HIT}`);
-    if (hit) tooltip.hide();
+    // Deferred: showing in flow reflows the notebook, which can slide the
+    // token out from under the cursor and fire a spurious mouseout.
+    if (hit) tooltip.hide(250);
   });
   window.addEventListener("scroll", () => tooltip.hide(), true);
 
@@ -218,6 +220,7 @@ class Tooltip {
   private showing: string | undefined;
   private maxW = 460;
   private maxH = 240;
+  private hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly context: RendererContext) {
     this.element = document.createElement("div");
@@ -229,6 +232,9 @@ class Tooltip {
   show(span: HTMLElement): void {
     const smiles = span.dataset.smiles;
     if (!smiles) return;
+    clearTimeout(this.hideTimer);
+    // Already up for this molecule: touching the DOM again would only reflow.
+    if (this.showing === smiles && !this.element.hidden) return;
     this.showing = smiles;
 
     const picture = pictures.get(smiles);
@@ -294,8 +300,14 @@ class Tooltip {
     this.resize();
   }
 
-  hide(): void {
+  hide(delayMs = 0): void {
+    clearTimeout(this.hideTimer);
+    if (delayMs > 0) {
+      this.hideTimer = setTimeout(() => this.hide(), delayMs);
+      return;
+    }
     this.element.hidden = true;
+    this.element.remove();
     this.showing = undefined;
   }
 }
