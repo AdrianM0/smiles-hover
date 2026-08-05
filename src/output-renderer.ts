@@ -18,6 +18,7 @@ type HostMessage =
 
 const HIT = "smiles-hover-hit";
 const TOOLTIP = "smiles-hover-tooltip";
+const INLINE = "smiles-hover-inline";
 
 /** Verdicts and pictures, per webview. Both come from the host. */
 const known = new Map<string, boolean>();
@@ -29,6 +30,7 @@ const awaiting = new Set<HTMLElement>();
 export function activate(context: RendererContext): void {
   // Says, in the webview console, that we got loaded at all.
   console.debug("SMILES Hover: output renderer active");
+  report(context, "activate", { url: window.location?.href });
   injectStyle();
   const tooltip = new Tooltip(context);
 
@@ -45,19 +47,26 @@ export function activate(context: RendererContext): void {
   });
 
   document.addEventListener("mouseover", (event) => {
-    const hit = (event.target as HTMLElement | null)?.closest?.(`.${HIT}`);
+    const target = event.target as HTMLElement | null;
+    const hit = target?.closest?.(`.${HIT}`);
     // No wait for the verdict — the picture request asks the same question.
-    if (hit instanceof HTMLElement) tooltip.show(hit);
-  });
-  document.addEventListener("mouseout", (event) => {
-    const hit = (event.target as HTMLElement | null)?.closest?.(`.${HIT}`);
-    // Deferred: showing in flow reflows the notebook, which can slide the
-    // token out from under the cursor and fire a spurious mouseout.
-    if (hit) tooltip.hide(250);
+    if (hit instanceof HTMLElement) {
+      tooltip.show(hit);
+    } else if (!tooltip.owns(target)) {
+      // Only once the cursor has left the whole output. Tying this to the
+      // token instead makes it flicker: showing the picture grows the output,
+      // the notebook reflows, and the token slides off the cursor.
+      tooltip.hide(250);
+    }
   });
   window.addEventListener("scroll", () => tooltip.hide(), true);
 
   watch(context);
+}
+
+/** Temporary: sends what happened to the host, which writes it to a log. */
+function report(context: RendererContext, event: string, info: unknown): void {
+  context.postMessage?.({ type: "debug", event, info });
 }
 
 /** True while we're rewriting the DOM, so the observer ignores our own work. */
@@ -154,6 +163,7 @@ function markUp(element: HTMLElement, context: RendererContext): void {
     node.replaceWith(fragment);
   }
 
+  report(context, "markUp", { targets: targets.length, wrapped: seen.size, declared });
   if (seen.size > 0) {
     context.postMessage?.({ type: "check", smiles: [...seen].slice(0, 200) });
   }
@@ -171,58 +181,34 @@ function settle(): void {
 }
 
 /**
- * The element VS Code gave this output. The webview spans the notebook and
- * native cells are painted over it, so this box is the only safe region.
+ * The outermost part of this output that has a size and doesn't clip.
+ *
+ * Putting the picture here, in flow, makes the output grow: VS Code measures
+ * it and moves the cells below out of the way. That's the only way to see the
+ * whole thing — cells are painted over the webview, so nothing drawn on top of
+ * one is visible. Wrappers with no height are what made an earlier attempt at
+ * this invisible, hence the clientHeight test.
  */
-function outputRoot(span: HTMLElement): HTMLElement {
-  let node = span;
-  while (node.parentElement && node.parentElement !== document.body) {
-    node = node.parentElement;
+function growable(span: HTMLElement): HTMLElement | undefined {
+  let found: HTMLElement | undefined;
+  for (let n = span.parentElement; n && n !== document.body; n = n.parentElement) {
+    // A div inside a table gets foster-parented out of it, landing somewhere
+    // unrelated, so those elements can't host the picture.
+    if (TABLE_PARTS.has(n.tagName)) continue;
+    if (n.clientHeight > 0 && getComputedStyle(n).overflowY === "visible") {
+      found = n;
+    }
   }
-  return node;
+  return found;
 }
 
-/** Below this there is no point placing inside the output at all. */
-const MIN_PREVIEW = 120;
-
-/**
- * Where the preview goes. Inside the output's visible box when that has room —
- * a truncated output reaches far past the viewport, so only the on-screen part
- * counts. Small outputs have no room at all; those fall back to the viewport,
- * which can overlap a cell but at least shows the molecule.
- */
-export function fitPreview(
-  span: { top: number; bottom: number; left: number },
-  box: { top: number; bottom: number; left: number; right: number; width: number },
-  view: { width: number; height: number }
-) {
-  const top = Math.max(box.top, 0);
-  const bottom = Math.min(box.bottom, view.height);
-  const above = span.top - top;
-  const below = bottom - span.bottom;
-  const room = Math.max(above, below) - 8;
-
-  // Too cramped to place inside the output: use the viewport instead.
-  const cramped = room < MIN_PREVIEW;
-  const lo = cramped ? 0 : top;
-  const hi = cramped ? view.height : bottom;
-
-  const maxW = Math.max(MIN_PREVIEW, Math.min(460, (cramped ? view.width : box.width) - 8));
-  const maxH = Math.max(MIN_PREVIEW, Math.min(240, cramped ? hi - lo - 8 : room));
-  const down = cramped ? view.height - span.bottom >= span.top : below >= above;
-  const wanted = down ? span.bottom + 4 : span.top - maxH - 4;
-
-  return {
-    maxW,
-    maxH,
-    top: Math.min(Math.max(lo, wanted), Math.max(lo, hi - maxH)),
-    left: Math.max(0, Math.min(span.left, Math.min(box.right, view.width) - maxW)),
-  };
-}
+const TABLE_PARTS = new Set(["TABLE", "THEAD", "TBODY", "TFOOT", "TR"]);
 
 class Tooltip {
   private readonly element: HTMLElement;
   private showing: string | undefined;
+  /** The output the picture was put in; the cursor may roam anywhere in it. */
+  private host: HTMLElement | undefined;
   private maxW = 460;
   private maxH = 240;
   private hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -237,6 +223,7 @@ class Tooltip {
   show(span: HTMLElement): void {
     const smiles = span.dataset.smiles;
     if (!smiles) return;
+    report(this.context, "show", { smiles, cached: pictures.has(smiles) });
     clearTimeout(this.hideTimer);
     // Already up for this molecule: touching the DOM again would only reflow.
     // `isConnected` matters — an in-flow preview goes with the output when a
@@ -260,21 +247,40 @@ class Tooltip {
     this.place(span);
   }
 
+  /** In flow at the end of the output, so the notebook makes room for it. */
   private place(span: HTMLElement): void {
-    const fit = fitPreview(
-      span.getBoundingClientRect(),
-      outputRoot(span).getBoundingClientRect(),
-      { width: window.innerWidth, height: window.innerHeight }
-    );
-
-    this.maxW = fit.maxW;
-    this.maxH = fit.maxH;
-    this.element.style.maxWidth = `${fit.maxW}px`;
+    const host = growable(span);
+    this.maxW = Math.min(460, Math.max(160, window.innerWidth - 8));
+    this.maxH = 240;
+    this.element.style.maxWidth = `${this.maxW}px`;
     this.element.hidden = false;
-    document.body.append(this.element);
-    this.element.style.top = `${fit.top}px`;
-    this.element.style.left = `${fit.left}px`;
+    this.element.classList.toggle(INLINE, !!host);
+
+    this.host = host;
+    if (host) {
+      host.append(this.element);
+    } else {
+      // Nothing sized to grow: fall back to floating under the token.
+      const rect = span.getBoundingClientRect();
+      document.body.append(this.element);
+      this.element.style.top = `${rect.bottom + 4}px`;
+      this.element.style.left = `${Math.max(0, rect.left)}px`;
+    }
     this.resize();
+
+    const rect = this.element.getBoundingClientRect();
+    report(this.context, "placed", {
+      host: host?.tagName + "." + host?.className,
+      hostHeight: host?.clientHeight,
+      tooltip: { top: rect.top, left: rect.left, w: rect.width, h: rect.height },
+      span: { top: span.getBoundingClientRect().top, bottom: span.getBoundingClientRect().bottom },
+      view: { w: window.innerWidth, h: window.innerHeight },
+      connected: this.element.isConnected,
+      display: getComputedStyle(this.element).display,
+      visibility: getComputedStyle(this.element).visibility,
+      zIndex: getComputedStyle(this.element).zIndex,
+      html: this.element.innerHTML.slice(0, 60),
+    });
   }
 
   /** The SVG scales, so the picture shrinks to whatever room there was. */
@@ -283,6 +289,12 @@ class Tooltip {
     if (!img) return;
     img.style.maxWidth = `${this.maxW - 12}px`;
     img.style.maxHeight = `${this.maxH - 12}px`;
+  }
+
+  /** Is the cursor still somewhere the preview belongs to? */
+  owns(node: HTMLElement | null): boolean {
+    if (!node || this.element.hidden) return false;
+    return !!this.host?.contains(node) || this.element.contains(node);
   }
 
   /** A picture arrived; show it if it's the one on screen. */
@@ -311,6 +323,7 @@ class Tooltip {
     this.element.hidden = true;
     this.element.remove();
     this.showing = undefined;
+    this.host = undefined;
   }
 }
 
@@ -330,6 +343,7 @@ function injectStyle(): void {
       pointer-events: none;
     }
     .${TOOLTIP} img { display: block; }
+    .${TOOLTIP}.${INLINE} { position: static; margin: 4px 0; }
   `;
   document.head.append(style);
 }

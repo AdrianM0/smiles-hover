@@ -1,5 +1,9 @@
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { SmilesRenderer } from "./renderer";
+
+/** Temporary: where the renderer's diagnostics land, for debugging in place. */
+const DEBUG_LOG = "/tmp/smiles-hover-debug.log";
 
 export const OUTPUT_RENDERER_ID = "smiles-hover-output";
 
@@ -16,6 +20,17 @@ export function serveOutputRenderer(renderer: SmilesRenderer): vscode.Disposable
   );
 
   return messaging.onDidReceiveMessage(async ({ editor, message }) => {
+    if (message?.type === "debug") {
+      try {
+        fs.appendFileSync(
+          DEBUG_LOG,
+          `${new Date().toISOString()} ${message.event} ${JSON.stringify(message.info)}\n`
+        );
+      } catch {
+        // Diagnostics must never break the feature.
+      }
+      return;
+    }
     if (message?.type === "check" && Array.isArray(message.smiles)) {
       const valid: Record<string, boolean> = {};
       for (const smiles of message.smiles.slice(0, MAX_BATCH)) {

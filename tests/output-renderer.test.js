@@ -14,11 +14,15 @@ async function mount({ messaging = true } = {}) {
   for (const name of ["window", "document", "NodeFilter", "Node", "HTMLElement", "MutationObserver"]) {
     global[name] = name === "window" ? dom.window : dom.window[name];
   }
+  global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
 
   const sent = [];
   let listener = () => {};
   const context = {
-    postMessage: messaging ? (message) => sent.push(message) : undefined,
+    // Diagnostics are noise here.
+    postMessage: messaging
+      ? (message) => message.type !== "debug" && sent.push(message)
+      : undefined,
     onDidReceiveMessage: (fn) => (listener = fn),
   };
 
@@ -163,74 +167,50 @@ test("a plain-text dict repr, which no hook ever reaches", async () => {
   );
 });
 
-test("the preview hangs off the body, never inside the output", async () => {
-  // Inside the output it can be clipped by a container VS Code sizes, and
-  // then nothing is visible at all.
+test("the preview goes in the output, so the notebook makes room", async () => {
+  // Cells are painted over the webview, so the only way to see the whole
+  // picture is to grow the output and let VS Code push them down.
   const out = await mount();
-  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  await out.render(`<div id="o"><pre>smiles: CCO</pre></div>`);
+  // jsdom lays nothing out, so give the output a height to be found by.
+  Object.defineProperty(out.dom.window.document.querySelector("#o"), "clientHeight", {
+    value: 40,
+  });
   out.send({ type: "checked", valid: { CCO: true } });
   out.hits()[0].dispatchEvent(
     new out.dom.window.MouseEvent("mouseover", { bubbles: true })
   );
 
-  const tooltip = out.dom.window.document.querySelector(".smiles-hover-tooltip");
-  assert.equal(tooltip.parentElement, out.dom.window.document.body);
+  const doc = out.dom.window.document;
+  const tooltip = doc.querySelector(".smiles-hover-tooltip");
+  assert.ok(tooltip.classList.contains("smiles-hover-inline"));
+  assert.ok(doc.querySelector("#o").contains(tooltip), "inside the output");
 });
 
-test("the preview never leaves the visible part of its output", async () => {
-  const url = require("node:url").pathToFileURL(
-    require.resolve("../out/renderer/output.js")
-  );
-  const { fitPreview } = await import(`${url}?fit`);
-  const view = { width: 1000, height: 800 };
-
-  // A truncated output reaching far above the viewport: the room above is
-  // off-screen and belongs to the cell above, so the preview must go below.
-  const scrolled = fitPreview(
-    { top: 100, bottom: 116, left: 20 },
-    { top: -4000, bottom: 700, left: 0, right: 900, width: 900 },
-    view
-  );
-  assert.ok(scrolled.top >= 0 && scrolled.top + scrolled.maxH <= 700);
-
-  // Room above, none below: placed above, still inside the box.
-  const bottomEdge = fitPreview(
-    { top: 600, bottom: 616, left: 20 },
-    { top: 200, bottom: 620, left: 0, right: 900, width: 900 },
-    view
-  );
-  assert.ok(bottomEdge.top >= 200 && bottomEdge.top + bottomEdge.maxH <= 620);
-
-  // A short output — the common case — has no room inside it, so the preview
-  // is placed against the viewport and stays on screen.
-  const cramped = fitPreview(
-    { top: 300, bottom: 316, left: 20 },
-    { top: 298, bottom: 318, left: 0, right: 900, width: 900 },
-    view
-  );
-  assert.ok(cramped.maxH >= 120, "big enough to read");
-  assert.ok(cramped.top >= 0 && cramped.top + cramped.maxH <= view.height);
-});
-
-test("a spurious mouseout doesn't tear the preview down", async () => {
-  // Showing in flow reflows the notebook, which can move the token off the
-  // cursor and fire mouseout immediately.
+test("the preview survives the token moving off the cursor", async () => {
+  // Showing the picture grows the output and the notebook reflows, so the
+  // token slides away and the pointer lands on other parts of the output.
+  // Hiding on that is what made it flicker and vanish.
   const out = await mount();
-  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  await out.render(`<div id="o"><pre>smiles: CCO</pre><span id="elsewhere">x</span></div>`);
+  const doc = out.dom.window.document;
+  Object.defineProperty(doc.querySelector("#o"), "clientHeight", { value: 40 });
   out.send({ type: "checked", valid: { CCO: true } });
 
-  const span = out.hits()[0];
-  const over = () =>
-    span.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
-  over();
-  span.dispatchEvent(new out.dom.window.MouseEvent("mouseout", { bubbles: true }));
+  const over = (el) =>
+    el.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+  over(out.hits()[0]);
+  assert.ok(doc.querySelector(".smiles-hover-tooltip"));
 
-  const shown = () =>
-    out.dom.window.document.querySelector(".smiles-hover-tooltip") !== null;
-  assert.ok(shown(), "still up right after the mouseout");
-  over(); // the cursor never actually left
-  await new Promise((r) => setTimeout(r, 300));
-  assert.ok(shown(), "the deferred hide was cancelled");
+  // The cursor is now over the output, but no longer the token.
+  over(doc.querySelector("#elsewhere"));
+  await new Promise((r) => setTimeout(r, 400));
+  assert.ok(doc.querySelector(".smiles-hover-tooltip"), "still up");
+
+  // Leaving the output entirely does close it.
+  over(doc.body);
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(doc.querySelector(".smiles-hover-tooltip"), null);
 });
 
 test("the preview comes back after its output is re-rendered", async () => {
