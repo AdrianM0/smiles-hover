@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.4
+
+- **Fix: output previews were drawn behind the next cell.** The outputs webview
+  spans the notebook, but VS Code paints the native cell editors on top of it,
+  so anything overflowing an output's own rectangle disappears under a cell.
+  The preview now fits itself to that rectangle — and when there's no room in
+  it, as with a one-line `print`, it sits in flow at the end of the output and
+  lets the output grow instead.
+
 ## 1.1.3
 
 - **Output hovers now cover plain text**, not just HTML. The built-in renderer

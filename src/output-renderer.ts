@@ -18,6 +18,7 @@ type HostMessage =
 
 const HIT = "smiles-hover-hit";
 const TOOLTIP = "smiles-hover-tooltip";
+const INLINE = "smiles-hover-inline";
 
 /** Verdicts and pictures, per webview. Both come from the host. */
 const known = new Map<string, boolean>();
@@ -166,9 +167,26 @@ function settle(): void {
   }
 }
 
+/**
+ * The element VS Code gave this output. The webview spans the notebook and
+ * native cells are painted over it, so this box is the only safe region.
+ */
+function outputRoot(span: HTMLElement): HTMLElement {
+  let node = span;
+  while (node.parentElement && node.parentElement !== document.body) {
+    node = node.parentElement;
+  }
+  return node;
+}
+
+/** Below this a preview says nothing, so grow the output instead. */
+const MIN_PREVIEW = 120;
+
 class Tooltip {
   private readonly element: HTMLElement;
   private showing: string | undefined;
+  private maxW = 460;
+  private maxH = 240;
 
   constructor(private readonly context: RendererContext) {
     this.element = document.createElement("div");
@@ -193,14 +211,44 @@ class Tooltip {
       this.paint(picture);
     }
 
+    this.place(span);
+  }
+
+  /**
+   * Float inside the output's box when it has room; otherwise sit in flow at
+   * the end of it, growing the output. A one-line `print` has no room.
+   */
+  private place(span: HTMLElement): void {
+    const root = outputRoot(span);
     const rect = span.getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    const above = rect.top - box.top;
+    const below = box.bottom - rect.bottom;
+    const room = Math.max(above, below) - 8;
+
+    this.maxW = Math.max(MIN_PREVIEW, Math.min(460, box.width - 8));
+    this.maxH = Math.max(MIN_PREVIEW, Math.min(240, room));
+    this.element.style.maxWidth = `${this.maxW}px`;
     this.element.hidden = false;
-    // Below the token, or above when there's no room.
-    const below = rect.bottom + 8;
-    const room = window.innerHeight - below;
-    this.element.style.left = `${Math.max(4, Math.min(rect.left, window.innerWidth - 320))}px`;
-    this.element.style.top =
-      room > 200 ? `${below}px` : `${Math.max(4, rect.top - 260)}px`;
+
+    if (room < MIN_PREVIEW) {
+      this.element.classList.add(INLINE);
+      root.append(this.element);
+    } else {
+      this.element.classList.remove(INLINE);
+      document.body.append(this.element);
+      this.element.style.top = `${below >= above ? rect.bottom + 4 : rect.top - this.maxH - 4}px`;
+      this.element.style.left = `${Math.max(box.left, Math.min(rect.left, box.right - this.maxW))}px`;
+    }
+    this.resize();
+  }
+
+  /** The SVG scales, so the picture shrinks to whatever room there was. */
+  private resize(): void {
+    const img = this.element.querySelector("img");
+    if (!img) return;
+    img.style.maxWidth = `${this.maxW - 12}px`;
+    img.style.maxHeight = `${this.maxH - 12}px`;
   }
 
   /** A picture arrived; show it if it's the one on screen. */
@@ -217,6 +265,7 @@ class Tooltip {
     img.src = dataUri;
     img.alt = this.showing ?? "molecule";
     this.element.append(img);
+    this.resize();
   }
 
   hide(): void {
@@ -240,7 +289,8 @@ function injectStyle(): void {
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
       pointer-events: none;
     }
-    .${TOOLTIP} img { display: block; max-width: 460px; }
+    .${TOOLTIP} img { display: block; }
+    .${TOOLTIP}.${INLINE} { position: static; margin: 4px 0; }
   `;
   document.head.append(style);
 }

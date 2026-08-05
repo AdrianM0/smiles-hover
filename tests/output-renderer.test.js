@@ -162,3 +162,18 @@ test("a plain-text dict repr, which no hook ever reaches", async () => {
     ["OB(O)c1ccc(Br)cc1", "COc1ccc2[nH]cc(CCN(C)C)c2c1"]
   );
 });
+
+test("with no room to float, the preview grows the output instead", async () => {
+  // A one-line print has nowhere to put a picture, and anything drawn outside
+  // the output's box lands behind the next cell.
+  const out = await mount();
+  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  out.send({ type: "checked", valid: { CCO: true } });
+  out.hits()[0].dispatchEvent(
+    new out.dom.window.MouseEvent("mouseover", { bubbles: true })
+  );
+
+  const tooltip = out.dom.window.document.querySelector(".smiles-hover-tooltip");
+  assert.ok(tooltip.classList.contains("smiles-hover-inline"));
+  assert.notEqual(tooltip.parentElement, out.dom.window.document.body);
+});
