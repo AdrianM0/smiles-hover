@@ -30,7 +30,6 @@ const awaiting = new Set<HTMLElement>();
 export function activate(context: RendererContext): void {
   // Says, in the webview console, that we got loaded at all.
   console.debug("SMILES Hover: output renderer active");
-  report(context, "activate", { url: window.location?.href });
   injectStyle();
   const tooltip = new Tooltip(context);
 
@@ -62,11 +61,6 @@ export function activate(context: RendererContext): void {
   window.addEventListener("scroll", () => tooltip.hide(), true);
 
   watch(context);
-}
-
-/** Temporary: sends what happened to the host, which writes it to a log. */
-function report(context: RendererContext, event: string, info: unknown): void {
-  context.postMessage?.({ type: "debug", event, info });
 }
 
 /** True while we're rewriting the DOM, so the observer ignores our own work. */
@@ -163,7 +157,6 @@ function markUp(element: HTMLElement, context: RendererContext): void {
     node.replaceWith(fragment);
   }
 
-  report(context, "markUp", { targets: targets.length, wrapped: seen.size, declared });
   if (seen.size > 0) {
     context.postMessage?.({ type: "check", smiles: [...seen].slice(0, 200) });
   }
@@ -206,6 +199,8 @@ const TABLE_PARTS = new Set(["TABLE", "THEAD", "TBODY", "TFOOT", "TR"]);
 
 class Tooltip {
   private readonly element: HTMLElement;
+  /** Reused, never replaced: swapping the node relayouts the whole output. */
+  private readonly img: HTMLImageElement;
   private showing: string | undefined;
   /** The output the picture was put in; the cursor may roam anywhere in it. */
   private host: HTMLElement | undefined;
@@ -217,13 +212,14 @@ class Tooltip {
     this.element = document.createElement("div");
     this.element.className = TOOLTIP;
     this.element.hidden = true;
+    this.img = document.createElement("img");
+    this.element.append(this.img);
     document.body.append(this.element);
   }
 
   show(span: HTMLElement): void {
     const smiles = span.dataset.smiles;
     if (!smiles) return;
-    report(this.context, "show", { smiles, cached: pictures.has(smiles) });
     clearTimeout(this.hideTimer);
     // Already up for this molecule: touching the DOM again would only reflow.
     // `isConnected` matters — an in-flow preview goes with the output when a
@@ -235,7 +231,9 @@ class Tooltip {
 
     const picture = pictures.get(smiles);
     if (picture === undefined) {
-      this.element.textContent = "Rendering…";
+      // Keep the previous molecule up while this one draws — blanking the box
+      // collapses it, and the output resizes twice for one hover.
+      this.img.style.opacity = "0.35";
       this.context.postMessage?.({ type: "render", smiles });
     } else if (picture === null) {
       this.hide();
@@ -256,7 +254,14 @@ class Tooltip {
     this.element.hidden = false;
     this.element.classList.toggle(INLINE, !!host);
 
+    // Re-appending to the same parent tears the element out and back in,
+    // which is a relayout and a visible flash.
+    const settled = host === this.host && this.element.isConnected;
     this.host = host;
+    if (settled) {
+      this.resize();
+      return;
+    }
     if (host) {
       host.append(this.element);
     } else {
@@ -267,28 +272,12 @@ class Tooltip {
       this.element.style.left = `${Math.max(0, rect.left)}px`;
     }
     this.resize();
-
-    const rect = this.element.getBoundingClientRect();
-    report(this.context, "placed", {
-      host: host?.tagName + "." + host?.className,
-      hostHeight: host?.clientHeight,
-      tooltip: { top: rect.top, left: rect.left, w: rect.width, h: rect.height },
-      span: { top: span.getBoundingClientRect().top, bottom: span.getBoundingClientRect().bottom },
-      view: { w: window.innerWidth, h: window.innerHeight },
-      connected: this.element.isConnected,
-      display: getComputedStyle(this.element).display,
-      visibility: getComputedStyle(this.element).visibility,
-      zIndex: getComputedStyle(this.element).zIndex,
-      html: this.element.innerHTML.slice(0, 60),
-    });
   }
 
   /** The SVG scales, so the picture shrinks to whatever room there was. */
   private resize(): void {
-    const img = this.element.querySelector("img");
-    if (!img) return;
-    img.style.maxWidth = `${this.maxW - 12}px`;
-    img.style.maxHeight = `${this.maxH - 12}px`;
+    this.img.style.maxWidth = `${this.maxW - 12}px`;
+    this.img.style.maxHeight = `${this.maxH - 12}px`;
   }
 
   /** Is the cursor still somewhere the preview belongs to? */
@@ -306,11 +295,9 @@ class Tooltip {
   }
 
   private paint(dataUri: string): void {
-    this.element.textContent = "";
-    const img = document.createElement("img");
-    img.src = dataUri;
-    img.alt = this.showing ?? "molecule";
-    this.element.append(img);
+    this.img.src = dataUri;
+    this.img.alt = this.showing ?? "molecule";
+    this.img.style.opacity = "1";
     this.resize();
   }
 

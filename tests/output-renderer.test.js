@@ -231,3 +231,26 @@ test("the preview comes back after its output is re-rendered", async () => {
   over(out.hits()[0]);
   assert.ok(doc.querySelector(".smiles-hover-tooltip"), "shown again");
 });
+
+test("switching molecules swaps the picture without rebuilding it", async () => {
+  // Clearing the box or re-appending it relayouts the output, which reads as
+  // a flicker on every move between two molecules.
+  const out = await mount();
+  await out.render(`<div id="o"><pre>smiles: CCO CCN</pre></div>`);
+  const doc = out.dom.window.document;
+  Object.defineProperty(doc.querySelector("#o"), "clientHeight", { value: 40 });
+  out.send({ type: "checked", valid: { CCO: true, CCN: true } });
+  const over = (el) =>
+    el.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+
+  over(out.hits()[0]);
+  out.send({ type: "rendered", smiles: "CCO", dataUri: "data:image/svg+xml;base64,QQ==" });
+  const img = doc.querySelector(".smiles-hover-tooltip img");
+
+  over(out.hits()[1]);
+  out.send({ type: "rendered", smiles: "CCN", dataUri: "data:image/svg+xml;base64,Qg==" });
+
+  assert.equal(doc.querySelector(".smiles-hover-tooltip img"), img, "same <img> node");
+  assert.equal(img.src, "data:image/svg+xml;base64,Qg==", "just a new src");
+  assert.equal(doc.querySelectorAll(".smiles-hover-tooltip").length, 1);
+});

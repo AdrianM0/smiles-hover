@@ -2,13 +2,25 @@
 
 ## 1.1.8
 
-- **Fix: hovering an output showed the cursor but no picture.** Real outputs
-  are short — a table or a printed line leaves 30-40px around a token, under
-  the threshold for placing the preview inside the output — so every hover took
-  the in-flow path, where the preview sits in a container VS Code can clip, and
-  nothing appeared. The preview now always floats: inside the output's box when
-  that has room, against the viewport when it doesn't. Overlapping a cell is
-  worse than nothing only in theory; invisible is worse in practice.
+- **Fix: hovering an output showed the cursor but no picture.** The preview was
+  being placed against two numbers that don't mean what they look like: a
+  notebook webview is as tall as the whole notebook, so `innerHeight` is no
+  viewport, and the output's own element measures zero height. Clamping to
+  either parked the picture thousands of pixels off screen. It is now anchored
+  to the one honest rectangle, the token's own.
+- **The preview grows the output** instead of floating over it, so VS Code
+  moves the cells below out of the way. Nothing else works: cell editors are
+  painted over the webview, and no z-index reaches across that.
+- **No flicker between molecules.** One `<img>` is reused rather than rebuilt,
+  the element isn't re-appended when the output hasn't changed, and the
+  previous structure stays up while the next one draws.
+- **The preview stays up while the cursor is anywhere in the output.** Tying it
+  to the token made it flicker away, since growing the output reflows the
+  notebook and slides the token off the cursor.
+- **Molecules fill their frame.** RDKit fits a structure into a fixed-aspect
+  canvas and the mismatch became white bands — ethanol used 19% of its picture,
+  a straight chain 3%. The canvas is now cropped to the drawing: 75% and 39%
+  respectively, aspirin 58% to 87%. Editor hovers get this too.
 
 ## 1.1.7
 

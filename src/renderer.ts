@@ -163,7 +163,7 @@ export class SmilesRenderer {
 
     try {
       const raw = await this.draw(smiles, width, height, preset, autoSize);
-      const svg = fitForHover(raw, maxW, maxH);
+      const svg = fitForHover(cropToInk(raw), maxW, maxH);
       this.cache.set(cacheKey, { svg });
       return svg;
     } catch (err) {
@@ -204,6 +204,45 @@ export class SmilesRenderer {
       mol.delete();
     }
   }
+}
+
+/**
+ * Crop the canvas to what was actually drawn.
+ *
+ * RDKit fits the structure into whatever canvas it's given, preserving aspect,
+ * so the leftover is white bands: ethanol used 19% of its canvas, a straight
+ * chain 3%. The drawing is untouched — only the viewBox moves — so the picture
+ * arrives the same size with the emptiness gone.
+ */
+function cropToInk(svg: string, margin = 12): string {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  // Drawn elements only: the background rect spans the whole canvas.
+  for (const el of svg.match(/<(?:path|ellipse|line|text)[^>]*>/g) ?? []) {
+    for (const [, x, y] of el.matchAll(/(-?\d+\.?\d*)[, ](-?\d+\.?\d*)/g)) {
+      const px = parseFloat(x);
+      const py = parseFloat(y);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      minX = Math.min(minX, px);
+      maxX = Math.max(maxX, px);
+      minY = Math.min(minY, py);
+      maxY = Math.max(maxY, py);
+    }
+  }
+  if (!(maxX > minX && maxY > minY)) return svg;
+
+  const x = Math.max(0, minX - margin);
+  const y = Math.max(0, minY - margin);
+  const w = Math.round(maxX - x + margin);
+  const h = Math.round(maxY - y + margin);
+
+  return svg
+    .replace(/\bwidth='[\d.]+px'/, `width='${w}px'`)
+    .replace(/\bheight='[\d.]+px'/, `height='${h}px'`)
+    .replace(/\bviewBox='[^']*'/, `viewBox='${x.toFixed(1)} ${y.toFixed(1)} ${w} ${h}'`);
 }
 
 /**
