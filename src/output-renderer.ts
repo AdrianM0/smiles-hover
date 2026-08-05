@@ -28,6 +28,8 @@ const pictures = new Map<string, string | null>();
 const awaiting = new Set<HTMLElement>();
 
 export function activate(context: RendererContext): void {
+  // Says, in the webview console, that we got loaded at all.
+  console.debug("SMILES Hover: output renderer active");
   injectStyle();
   const tooltip = new Tooltip(context);
 
