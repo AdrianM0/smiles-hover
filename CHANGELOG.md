@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3
+
+- **Output hovers now cover plain text**, not just HTML. The built-in renderer
+  hooks HTML only, so rather than wait to be called the renderer watches the
+  output DOM and marks up whatever appears — `print(smi)`, a dict repr, stdout,
+  a DataFrame table. The hook is gone; one path covers every output.
+
 ## 1.1.2
 
 - **Fix: output hovers still didn't appear.** 1.1.1 fixed the manifest, but the

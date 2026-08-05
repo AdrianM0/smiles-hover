@@ -86,11 +86,10 @@ and `smiles = ["CCO", "CCN"]` are drawn even though `CCO` is short. Lower
 detection skips is still one selection and `Ctrl+K M` away.
 
 **Jupyter notebooks** work in cell sources — code and markdown alike, exactly
-like a file — and in **HTML cell output**: `df.head()`, or anything with a
-`_repr_html_`. Molecules there get a dotted underline and draw on hover, and a
-`smiles` column header vouches for the cells beneath it, so short entries like
-`CCO` are picked up too. Plain `print(smi)` output is not covered; VS Code's
-built-in renderer offers extension hooks for HTML and JavaScript only.
+like a file — and in **cell output**: `print(smi)`, a dict repr, a `df.head()`
+table. Molecules there get a dotted underline and draw on hover, and a `smiles`
+column header vouches for the cells beneath it, so short entries like `CCO` are
+picked up too.
 
 **Rendering by hand.** For a SMILES buried inside a longer string, select it
 and press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover:
@@ -160,11 +159,10 @@ Color presets:
 3. The SVG is base64-encoded into a `data:` URI and embedded in the hover
    markdown. No temp files, no subprocess.
 4. Cell output is the exception: no hover provider reaches into a webview, so
-   [src/output-renderer.ts](src/output-renderer.ts) runs there, hooking the
-   built-in renderer via `getRenderer("vscode.builtin-renderer")`. It imports
-   the same [src/scan.ts](src/scan.ts) and asks the host for verdicts and
-   pictures ([src/output-messaging.ts](src/output-messaging.ts)); RDKit's 7 MB
-   stays out of the webview.
+   [src/output-renderer.ts](src/output-renderer.ts) runs there and watches the
+   output DOM. It imports the same [src/scan.ts](src/scan.ts) and asks the host
+   for verdicts and pictures ([src/output-messaging.ts](src/output-messaging.ts));
+   RDKit's 7 MB stays out of the webview.
 
 The background is always white, so molecules read the same in light and dark
 themes.
@@ -197,8 +195,8 @@ publishes to the Marketplace — see
 ## Limitations
 
 - No InChI, no reaction SMARTS.
-- In notebook output, only HTML is covered — the built-in renderer's hooks
-  reach HTML and JavaScript, not plain text or stdout.
+- Notebook output rendered by a third-party renderer — a plotly or ipywidget
+  view — draws into its own frame and isn't reached.
 - Auto-detection is conservative with short featureless tokens, because `CNN`,
   `ISC` and `CSS` are valid molecules and much more often not meant as ones.
   Put them under a `smiles` column header, on a line of their own, after a

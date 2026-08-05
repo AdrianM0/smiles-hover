@@ -1,38 +1,23 @@
 import { blockDeclaresSmiles, findCandidates } from "./scan";
 
 /**
- * Hovers for SMILES in cell output — DOM in a webview, not a document. Hooks
- * the built-in renderer's HTML path (`df.head()`, `_repr_html_`) and wraps the
- * molecules it drew. RDKit stays in the host, so verdicts and pictures arrive
- * by message. Plain text and stdout offer no hook, so `print(smi)` is out.
+ * Hovers for SMILES in cell output — DOM in a webview, not a document. The
+ * built-in renderer only hooks HTML, so instead of waiting to be called we
+ * watch the output DOM and mark up whatever appears, whichever renderer drew
+ * it. RDKit stays in the host; verdicts and pictures arrive by message.
  */
-
-/** The slice of the renderer API we use. */
-interface OutputItem {
-  id: string;
-  mime: string;
-}
 
 interface RendererContext {
   postMessage?(message: unknown): void;
   onDidReceiveMessage?(listener: (message: HostMessage) => void): void;
-  getRenderer?(id: string): Promise<BuiltinRenderer | undefined>;
 }
-
-/** The base renderer. Its hooks are the only way in; ours are never called. */
-interface BuiltinRenderer {
-  experimental_registerHtmlRenderingHook?(hook: {
-    postRender(item: OutputItem, element: HTMLElement): void;
-  }): void;
-}
-
-const BUILTIN = "vscode.builtin-renderer";
 
 type HostMessage =
   | { type: "checked"; valid: Record<string, boolean> }
   | { type: "rendered"; smiles: string; dataUri?: string };
 
 const HIT = "smiles-hover-hit";
+const TOOLTIP = "smiles-hover-tooltip";
 
 /** Verdicts and pictures, per webview. Both come from the host. */
 const known = new Map<string, boolean>();
@@ -41,10 +26,7 @@ const pictures = new Map<string, string | null>();
 /** Held, not queried later: an output may render into a shadow root. */
 const awaiting = new Set<HTMLElement>();
 
-export async function activate(context: RendererContext): Promise<void> {
-  const builtin = await context.getRenderer?.(BUILTIN);
-  if (!builtin?.experimental_registerHtmlRenderingHook) return;
-
+export function activate(context: RendererContext): void {
   injectStyle();
   const tooltip = new Tooltip(context);
 
@@ -71,11 +53,44 @@ export async function activate(context: RendererContext): Promise<void> {
   });
   window.addEventListener("scroll", () => tooltip.hide(), true);
 
-  builtin.experimental_registerHtmlRenderingHook({
-    postRender(_item, element) {
-      markUp(element, context);
-    },
-  });
+  watch(context);
+}
+
+/** True while we're rewriting the DOM, so the observer ignores our own work. */
+let marking = false;
+
+/**
+ * Mark up every output as it appears. Cells render lazily and get recycled on
+ * scroll, so this runs for the life of the webview rather than once.
+ */
+function watch(context: RendererContext): void {
+  const queue = new Set<HTMLElement>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    timer = undefined;
+    marking = true;
+    try {
+      for (const element of queue) markUp(element, context);
+    } finally {
+      queue.clear();
+      marking = false;
+    }
+  };
+
+  new MutationObserver((records) => {
+    if (marking) return;
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof HTMLElement && !node.closest(`.${HIT}`)) {
+          queue.add(node);
+        }
+      }
+    }
+    if (queue.size > 0 && timer === undefined) timer = setTimeout(flush, 100);
+  }).observe(document.body, { childList: true, subtree: true });
+
+  markUp(document.body, context); // whatever rendered before we loaded
 }
 
 /** Wrap every candidate in `element`, then ask the host which are real. */
@@ -83,15 +98,14 @@ function markUp(element: HTMLElement, context: RendererContext): void {
   // No messaging, no pictures — don't promise a hover that can't arrive.
   if (!context.postMessage) return;
 
-  const text = element.innerText ?? element.textContent ?? "";
-  if (!text) return;
-  const declared = blockDeclaresSmiles(text);
+  const all = element.innerText ?? element.textContent ?? "";
+  const declared = blockDeclaresSmiles(all);
 
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      // Outputs re-render on every run; don't wrap twice.
+      // Outputs re-render on every run; don't wrap twice, or wrap our own UI.
       const parent = node.parentElement;
-      if (parent?.closest(`.${HIT}`)) return NodeFilter.FILTER_REJECT;
+      if (parent?.closest(`.${HIT}, .${TOOLTIP}`)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue?.trim()
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
@@ -99,9 +113,7 @@ function markUp(element: HTMLElement, context: RendererContext): void {
   });
 
   const targets: Text[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    targets.push(node as Text);
-  }
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) targets.push(n as Text);
 
   const seen = new Set<string>();
   for (const node of targets) {
@@ -160,7 +172,7 @@ class Tooltip {
 
   constructor(private readonly context: RendererContext) {
     this.element = document.createElement("div");
-    this.element.className = "smiles-hover-tooltip";
+    this.element.className = TOOLTIP;
     this.element.hidden = true;
     document.body.append(this.element);
   }
@@ -216,12 +228,8 @@ class Tooltip {
 function injectStyle(): void {
   const style = document.createElement("style");
   style.textContent = `
-    .${HIT} {
-      text-decoration: underline dotted currentColor;
-      text-underline-offset: 2px;
-      cursor: help;
-    }
-    .smiles-hover-tooltip {
+    .${HIT} { text-decoration: underline dotted; cursor: help; }
+    .${TOOLTIP} {
       position: fixed;
       z-index: 100;
       padding: 6px;
@@ -232,7 +240,7 @@ function injectStyle(): void {
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
       pointer-events: none;
     }
-    .smiles-hover-tooltip img { display: block; max-width: 460px; }
+    .${TOOLTIP} img { display: block; max-width: 460px; }
   `;
   document.head.append(style);
 }
