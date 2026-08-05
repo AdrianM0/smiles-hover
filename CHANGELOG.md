@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.7
+
+- **Fix: a molecule stopped previewing once its output was re-rendered.** The
+  in-flow preview lives inside the output, so a cell re-run or a scroll took it
+  with them, while the renderer still believed it was on screen and skipped
+  re-showing it.
+
 ## 1.1.6
 
 - **Fix: no preview on one-line outputs.** Showing the picture in flow grows

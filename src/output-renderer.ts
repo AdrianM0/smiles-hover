@@ -234,7 +234,11 @@ class Tooltip {
     if (!smiles) return;
     clearTimeout(this.hideTimer);
     // Already up for this molecule: touching the DOM again would only reflow.
-    if (this.showing === smiles && !this.element.hidden) return;
+    // `isConnected` matters — an in-flow preview goes with the output when a
+    // cell re-runs or scrolls out, leaving this element detached.
+    if (this.showing === smiles && !this.element.hidden && this.element.isConnected) {
+      return;
+    }
     this.showing = smiles;
 
     const picture = pictures.get(smiles);

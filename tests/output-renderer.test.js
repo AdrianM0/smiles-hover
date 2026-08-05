@@ -233,3 +233,22 @@ test("a spurious mouseout doesn't tear the preview down", async () => {
   await new Promise((r) => setTimeout(r, 300));
   assert.ok(shown(), "the deferred hide was cancelled");
 });
+
+test("the preview comes back after its output is re-rendered", async () => {
+  // An in-flow preview lives inside the output, so a cell re-run or a scroll
+  // takes it with them — hovering the same molecule must still work.
+  const out = await mount();
+  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  out.send({ type: "checked", valid: { CCO: true } });
+  const over = (span) =>
+    span.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+  over(out.hits()[0]);
+
+  const doc = out.dom.window.document;
+  assert.ok(doc.querySelector(".smiles-hover-tooltip"));
+  doc.querySelector("#o").parentElement.remove(); // the output goes away
+
+  await out.render(`<pre id="o">smiles: CCO</pre>`);
+  over(out.hits()[0]);
+  assert.ok(doc.querySelector(".smiles-hover-tooltip"), "shown again");
+});
