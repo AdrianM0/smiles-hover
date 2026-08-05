@@ -4,9 +4,9 @@
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/adrianm0.smiles-hover)](https://marketplace.visualstudio.com/items?itemName=adrianm0.smiles-hover)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, Jupyter
-notebooks, plain text — and see the 2D structure rendered with **RDKit** in
-**ChemDraw style**.
+Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text,
+and Jupyter notebooks down to their cell output — and see the 2D structure
+rendered with **RDKit** in **ChemDraw style**.
 Molecules on screen are found and drawn before you reach for them; anything
 that isn't chemistry is silently ignored.
 
@@ -85,11 +85,8 @@ and `smiles = ["CCO", "CCN"]` are drawn even though `CCO` is short. Lower
 `autoDetectMinLength` to `3` if you write bare `CCO` in prose. Anything
 detection skips is still one selection and `Ctrl+K M` away.
 
-**Jupyter notebooks** work in cell sources — code and markdown alike, exactly
-like a file — and in **cell output**: `print(smi)`, a dict repr, a `df.head()`
-table. Molecules there get a dotted underline and draw on hover, and a `smiles`
-column header vouches for the cells beneath it, so short entries like `CCO` are
-picked up too.
+**Jupyter notebooks** work in cell sources and in cell output — see
+[below](#jupyter-notebooks).
 
 **Rendering by hand.** For a SMILES buried inside a longer string, select it
 and press `Ctrl+K M` (`Cmd+K M` on macOS), or right-click → **SMILES Hover:
@@ -105,6 +102,45 @@ off.
 The first render loads the WASM module (~200 ms); everything after is a few
 milliseconds, and results are cached per `(smiles, size, preset)`. Command
 Palette → **SMILES Hover: Clear Cache** to reset.
+
+## Jupyter notebooks
+
+Notebooks work in two places: **cell sources**, and **cell output**.
+
+![Hovering molecules in a printed list and in a df.head() table](https://raw.githubusercontent.com/AdrianM0/smiles-hover/main/images/notebook.gif)
+
+**Sources** — code and markdown — behave exactly like a file. Every visible
+cell is scanned, and each is its own document, so editing one cell doesn't
+disturb the molecules in another.
+
+**Output** is DOM in a webview, where no hover provider reaches, so a notebook
+renderer handles it. Anything the built-in renderer draws is covered, whatever
+produced it:
+
+| Output                            | Example                             |
+| --------------------------------- | ----------------------------------- |
+| stdout                            | `print(smi)`                        |
+| a repr                            | a list or dict of SMILES, a `Series` |
+| HTML                              | `df.head()`, anything with `_repr_html_` |
+| the cell's result                 | a bare `smi` on the last line       |
+
+Molecules there get a dotted underline; hovering one shows the structure. In a
+DataFrame, a `smiles` column header vouches for every cell beneath it, so a
+table of short entries like `CCO` comes alive whole — the same rule as a CSV's
+header row, applied to what `df.head()` printed.
+
+The picture appears **in the output**, which grows to fit it and pushes the
+cells below down. That's deliberate: VS Code paints cell editors over the
+output webview, so a picture floating above an output would be hidden by the
+next cell. Moving the cursor to another molecule swaps the picture in place.
+
+Detection and rendering stay in the extension host — the webview sends tokens
+and gets back verdicts and pictures — so RDKit's 7 MB is never loaded into the
+notebook.
+
+Not covered: output drawn by a third-party renderer, which lives in its own
+frame — a plotly figure, an ipywidget, or `Draw.MolToImage` (already a
+picture). Interactive Window input and output work the same as a notebook's.
 
 ## Configuration
 
@@ -160,9 +196,11 @@ Color presets:
    markdown. No temp files, no subprocess.
 4. Cell output is the exception: no hover provider reaches into a webview, so
    [src/output-renderer.ts](src/output-renderer.ts) runs there and watches the
-   output DOM. It imports the same [src/scan.ts](src/scan.ts) and asks the host
-   for verdicts and pictures ([src/output-messaging.ts](src/output-messaging.ts));
-   RDKit's 7 MB stays out of the webview.
+   output DOM — the built-in renderer only offers hooks for HTML and
+   JavaScript, and watching covers every output instead. It imports the same
+   [src/scan.ts](src/scan.ts) and asks the host for verdicts and pictures
+   ([src/output-messaging.ts](src/output-messaging.ts)); RDKit's 7 MB stays out
+   of the webview.
 
 The background is always white, so molecules read the same in light and dark
 themes.
@@ -183,10 +221,11 @@ To build a `.vsix` locally:
 npm run package
 ```
 
-The README demo is generated, not screen-recorded —
-[scripts/make-demo.js](scripts/make-demo.js) composites real renderer output
-into a mock editor window and encodes the GIF, so it can never drift from what
-the extension actually draws. Regenerate it with `npm run demo`.
+The README demos are generated, not screen-recorded —
+[scripts/make-demo.js](scripts/make-demo.js) and
+[scripts/make-notebook-demo.js](scripts/make-notebook-demo.js) composite real
+renderer output into a mock window and encode the GIF, so they can't drift from
+what the extension actually draws. Regenerate both with `npm run demo`.
 
 Pushing a `v*` tag builds the `.vsix`, attaches it to a GitHub Release, and
 publishes to the Marketplace — see
@@ -196,7 +235,8 @@ publishes to the Marketplace — see
 
 - No InChI, no reaction SMARTS.
 - Notebook output rendered by a third-party renderer — a plotly or ipywidget
-  view — draws into its own frame and isn't reached.
+  view — draws into its own frame and isn't reached. Everything the built-in
+  renderer draws is.
 - Auto-detection is conservative with short featureless tokens, because `CNN`,
   `ISC` and `CSS` are valid molecules and much more often not meant as ones.
   Put them under a `smiles` column header, on a line of their own, after a

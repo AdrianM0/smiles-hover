@@ -21,6 +21,9 @@
   canvas and the mismatch became white bands — ethanol used 19% of its picture,
   a straight chain 3%. The canvas is now cropped to the drawing: 75% and 39%
   respectively, aspirin 58% to 87%. Editor hovers get this too.
+- **Notebook support is documented**, with its own README section and a
+  generated demo: which outputs are covered, why the picture grows the output,
+  and what a `smiles` column header does to a `df.head()` table.
 
 ## 1.1.7
 

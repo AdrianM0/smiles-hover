@@ -158,7 +158,7 @@
     "test": "npm run compile && node --test \"tests/*.test.js\"",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
-    "demo": "node scripts/make-demo.js",
+    "demo": "node scripts/make-demo.js && node scripts/make-notebook-demo.js",
     "icon": "node scripts/make-icon.js"
   },
   "devDependencies": {

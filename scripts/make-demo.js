@@ -70,12 +70,12 @@ const C = {
 const LINES = [
   ["from rdkit import Chem", [[0, 4, C.keyword], [5, 5, C.ident], [11, 6, C.keyword], [18, 4, C.ident]]],
   ["", []],
-  ["LIGANDS = {", [[0, 7, C.const]]],
+  ["MOLECULES = {", [[0, 9, C.const]]],
   ['    "caffeine": "CN1C=NC2=C1C(=O)N(C)C(=O)N2C",', [[4, 10, C.string], [16, 31, C.string]]],
   ['    "imatinib": "Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc1nccc(-c2cccnc2)n1",', [[4, 10, C.string], [16, 61, C.string]]],
   ["}", []],
   ["", []],
-  ["for name, smi in LIGANDS.items():", [[0, 3, C.keyword], [14, 2, C.keyword], [17, 7, C.const], [25, 5, C.fn]]],
+  ["for name, smi in MOLECULES.items():", [[0, 3, C.keyword], [14, 2, C.keyword], [17, 9, C.const], [27, 5, C.fn]]],
   ["    mol = Chem.MolFromSmiles(smi)", [[10, 4, C.ident], [15, 13, C.fn]]],
 ];
 
