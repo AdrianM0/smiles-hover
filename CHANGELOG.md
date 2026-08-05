@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.8
+
+- **Fix: hovering an output showed the cursor but no picture.** Real outputs
+  are short — a table or a printed line leaves 30-40px around a token, under
+  the threshold for placing the preview inside the output — so every hover took
+  the in-flow path, where the preview sits in a container VS Code can clip, and
+  nothing appeared. The preview now always floats: inside the output's box when
+  that has room, against the viewport when it doesn't. Overlapping a cell is
+  worse than nothing only in theory; invisible is worse in practice.
+
 ## 1.1.7
 
 - **Fix: a molecule stopped previewing once its output was re-rendered.** The

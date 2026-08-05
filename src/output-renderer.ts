@@ -18,7 +18,6 @@ type HostMessage =
 
 const HIT = "smiles-hover-hit";
 const TOOLTIP = "smiles-hover-tooltip";
-const INLINE = "smiles-hover-inline";
 
 /** Verdicts and pictures, per webview. Both come from the host. */
 const known = new Map<string, boolean>();
@@ -183,14 +182,14 @@ function outputRoot(span: HTMLElement): HTMLElement {
   return node;
 }
 
-/** Below this a preview says nothing, so grow the output instead. */
+/** Below this there is no point placing inside the output at all. */
 const MIN_PREVIEW = 120;
 
 /**
- * Where the preview goes: inside the output's box, and only the part of that
- * box currently on screen — a truncated or scrolled output reaches well past
- * the viewport, and placing against its off-screen top puts the picture over
- * the cell above. Returns `inline` when there's no room worth using.
+ * Where the preview goes. Inside the output's visible box when that has room —
+ * a truncated output reaches far past the viewport, so only the on-screen part
+ * counts. Small outputs have no room at all; those fall back to the viewport,
+ * which can overlap a cell but at least shows the molecule.
  */
 export function fitPreview(
   span: { top: number; bottom: number; left: number },
@@ -203,17 +202,21 @@ export function fitPreview(
   const below = bottom - span.bottom;
   const room = Math.max(above, below) - 8;
 
-  const maxW = Math.max(MIN_PREVIEW, Math.min(460, box.width - 8));
-  const maxH = Math.max(MIN_PREVIEW, Math.min(240, room));
-  const wanted = below >= above ? span.bottom + 4 : span.top - maxH - 4;
-  const right = Math.min(box.right, view.width);
+  // Too cramped to place inside the output: use the viewport instead.
+  const cramped = room < MIN_PREVIEW;
+  const lo = cramped ? 0 : top;
+  const hi = cramped ? view.height : bottom;
+
+  const maxW = Math.max(MIN_PREVIEW, Math.min(460, (cramped ? view.width : box.width) - 8));
+  const maxH = Math.max(MIN_PREVIEW, Math.min(240, cramped ? hi - lo - 8 : room));
+  const down = cramped ? view.height - span.bottom >= span.top : below >= above;
+  const wanted = down ? span.bottom + 4 : span.top - maxH - 4;
 
   return {
-    inline: room < MIN_PREVIEW,
     maxW,
     maxH,
-    top: Math.min(Math.max(top, wanted), Math.max(top, bottom - maxH)),
-    left: Math.max(Math.max(box.left, 0), Math.min(span.left, right - maxW)),
+    top: Math.min(Math.max(lo, wanted), Math.max(lo, hi - maxH)),
+    left: Math.max(0, Math.min(span.left, Math.min(box.right, view.width) - maxW)),
   };
 }
 
@@ -258,10 +261,9 @@ class Tooltip {
   }
 
   private place(span: HTMLElement): void {
-    const root = outputRoot(span);
     const fit = fitPreview(
       span.getBoundingClientRect(),
-      root.getBoundingClientRect(),
+      outputRoot(span).getBoundingClientRect(),
       { width: window.innerWidth, height: window.innerHeight }
     );
 
@@ -269,15 +271,9 @@ class Tooltip {
     this.maxH = fit.maxH;
     this.element.style.maxWidth = `${fit.maxW}px`;
     this.element.hidden = false;
-    this.element.classList.toggle(INLINE, fit.inline);
-
-    if (fit.inline) {
-      root.append(this.element);
-    } else {
-      document.body.append(this.element);
-      this.element.style.top = `${fit.top}px`;
-      this.element.style.left = `${fit.left}px`;
-    }
+    document.body.append(this.element);
+    this.element.style.top = `${fit.top}px`;
+    this.element.style.left = `${fit.left}px`;
     this.resize();
   }
 
@@ -334,7 +330,6 @@ function injectStyle(): void {
       pointer-events: none;
     }
     .${TOOLTIP} img { display: block; }
-    .${TOOLTIP}.${INLINE} { position: static; margin: 4px 0; }
   `;
   document.head.append(style);
 }

@@ -163,9 +163,9 @@ test("a plain-text dict repr, which no hook ever reaches", async () => {
   );
 });
 
-test("with no room to float, the preview grows the output instead", async () => {
-  // A one-line print has nowhere to put a picture, and anything drawn outside
-  // the output's box lands behind the next cell.
+test("the preview hangs off the body, never inside the output", async () => {
+  // Inside the output it can be clipped by a container VS Code sizes, and
+  // then nothing is visible at all.
   const out = await mount();
   await out.render(`<pre id="o">smiles: CCO</pre>`);
   out.send({ type: "checked", valid: { CCO: true } });
@@ -174,8 +174,7 @@ test("with no room to float, the preview grows the output instead", async () => 
   );
 
   const tooltip = out.dom.window.document.querySelector(".smiles-hover-tooltip");
-  assert.ok(tooltip.classList.contains("smiles-hover-inline"));
-  assert.notEqual(tooltip.parentElement, out.dom.window.document.body);
+  assert.equal(tooltip.parentElement, out.dom.window.document.body);
 });
 
 test("the preview never leaves the visible part of its output", async () => {
@@ -192,7 +191,6 @@ test("the preview never leaves the visible part of its output", async () => {
     { top: -4000, bottom: 700, left: 0, right: 900, width: 900 },
     view
   );
-  assert.equal(scrolled.inline, false);
   assert.ok(scrolled.top >= 0 && scrolled.top + scrolled.maxH <= 700);
 
   // Room above, none below: placed above, still inside the box.
@@ -203,14 +201,15 @@ test("the preview never leaves the visible part of its output", async () => {
   );
   assert.ok(bottomEdge.top >= 200 && bottomEdge.top + bottomEdge.maxH <= 620);
 
-  // A one-line output has no room either way.
-  assert.ok(
-    fitPreview(
-      { top: 300, bottom: 316, left: 20 },
-      { top: 298, bottom: 318, left: 0, right: 900, width: 900 },
-      view
-    ).inline
+  // A short output — the common case — has no room inside it, so the preview
+  // is placed against the viewport and stays on screen.
+  const cramped = fitPreview(
+    { top: 300, bottom: 316, left: 20 },
+    { top: 298, bottom: 318, left: 0, right: 900, width: 900 },
+    view
   );
+  assert.ok(cramped.maxH >= 120, "big enough to read");
+  assert.ok(cramped.top >= 0 && cramped.top + cramped.maxH <= view.height);
 });
 
 test("a spurious mouseout doesn't tear the preview down", async () => {
