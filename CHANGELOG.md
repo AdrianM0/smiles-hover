@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0
+
+- **Fix: small molecules were drawn with bars for bonds** ([#4]). RDKit scales
+  bond width with the drawing, and the canvas was sized by atom count, so a
+  two-atom molecule was magnified until it filled it: `[Xe][Xe]` drew at 10.9
+  px against caffeine's 3.3, and its atom labels — capped at 22 px — looked
+  like specks beside them. The canvas now comes from the molecule's own 2D
+  layout at a fixed number of pixels per bond, so every structure is drawn at
+  one scale and one line weight. Across two atoms to sixty, bond width now
+  spans 1.8–3.7 px instead of 1.8–10.9.
+- Ethanol is therefore a small picture and imatinib a wide one, as on a page of
+  chemistry, rather than every molecule being blown up to the same box.
+- **Fix: the crop margin could fall outside the white background**, leaving a
+  transparent edge that picked up the theme behind it. The background follows
+  the crop now.
+
+[#4]: https://github.com/AdrianM0/smiles-hover/issues/4
+
 ## 1.1.8
 
 - **Fix: hovering an output showed the cursor but no picture.** The preview was

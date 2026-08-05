@@ -239,10 +239,18 @@ function cropToInk(svg: string, margin = 12): string {
   const w = Math.round(maxX - x + margin);
   const h = Math.round(maxY - y + margin);
 
-  return svg
-    .replace(/\bwidth='[\d.]+px'/, `width='${w}px'`)
-    .replace(/\bheight='[\d.]+px'/, `height='${h}px'`)
-    .replace(/\bviewBox='[^']*'/, `viewBox='${x.toFixed(1)} ${y.toFixed(1)} ${w} ${h}'`);
+  return (
+    svg
+      .replace(/\bwidth='[\d.]+px'/, `width='${w}px'`)
+      .replace(/\bheight='[\d.]+px'/, `height='${h}px'`)
+      .replace(/\bviewBox='[^']*'/, `viewBox='${x.toFixed(1)} ${y.toFixed(1)} ${w} ${h}'`)
+      // The background rect covers the original canvas, which a tight drawing
+      // can spill past — leaving the margin transparent. Move it to the crop.
+      .replace(
+        /(<rect[^>]*?)width='[\d.]+' height='[\d.]+' x='[-\d.]+' y='[-\d.]+'/,
+        `$1width='${w}' height='${h}' x='${x.toFixed(1)}' y='${y.toFixed(1)}'`
+      )
+  );
 }
 
 /**
@@ -304,41 +312,38 @@ function layoutBBox(molblock: string): { w: number; h: number } | undefined {
 }
 
 /**
- * A canvas that shows the whole structure legibly. RDKit fits coordinates to
- * whatever canvas it's given, so a fixed one crushes big molecules into a pile
- * of colliding labels. Grow the area with the atom count and take the aspect
- * from the layout; clamp both, or decane renders as a 15:1 ribbon.
+ * A canvas sized to the layout, at a fixed number of pixels per bond.
+ *
+ * RDKit fits the structure to whatever canvas it's given and scales bond width
+ * with it, so the canvas *is* the drawing scale. Sizing it by atom count blew
+ * small molecules up to fill it — `[Xe][Xe]` drew a 10 px bar between two
+ * label-sized specks, and ethanol wasn't far behind. Holding the scale fixed
+ * keeps line weight and labels in proportion at every size; big molecules
+ * still clamp to the maxima and shrink from there.
  */
 function canvasFor(
   mol: RDKitMol,
   baseWidth: number,
   baseHeight: number
 ): [number, number] {
-  const REFERENCE_ATOMS = 16; // ~caffeine; what the defaults were tuned for
-  const MAX_SCALE = 1.6;
-  const MIN_ASPECT = 0.8;
-  const MAX_ASPECT = 2.5;
+  const PX_PER_BOND = 96; // a bond is 1 unit long; tuned on caffeine
+  const MIN_SIDE = 0.9; // so a flat or single-atom layout isn't a sliver
+  const MIN_W = 120;
+  const MIN_H = 90;
   const MAX_W = 820;
   const MAX_H = 620;
 
-  const scale = Math.min(
-    MAX_SCALE,
-    Math.max(1, Math.sqrt(mol.get_num_atoms() / REFERENCE_ATOMS))
-  );
-  const area = baseWidth * baseHeight * scale * scale;
-
-  let aspect = baseWidth / baseHeight;
   const bbox = layoutBBox(mol.get_molblock());
-  if (bbox && bbox.w > 0.01 && bbox.h > 0.01) {
-    aspect = bbox.w / bbox.h;
-  } else if (bbox && bbox.w > 0.01) {
-    aspect = MAX_ASPECT; // perfectly linear layout, e.g. a short alkane
-  }
-  aspect = Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, aspect));
+  if (!bbox) return [baseWidth, baseHeight];
 
-  const w = Math.min(MAX_W, Math.round(Math.sqrt(area * aspect)));
-  const h = Math.min(MAX_H, Math.round(w / aspect));
-  return [w, h];
+  // imageWidth/imageHeight stay meaningful: they scale the whole drawing.
+  const unit = PX_PER_BOND * Math.sqrt((baseWidth * baseHeight) / (500 * 350));
+  // No margin added here: RDKit fills whatever it's given, so extra room only
+  // magnifies the drawing again. Its own `padding` reserves the edge.
+  const side = (extent: number, min: number, max: number) =>
+    Math.round(Math.min(max, Math.max(min, Math.max(extent, MIN_SIDE) * unit)));
+
+  return [side(bbox.w, MIN_W, MAX_W), side(bbox.h, MIN_H, MAX_H)];
 }
 
 /**

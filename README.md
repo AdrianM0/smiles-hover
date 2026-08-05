@@ -157,12 +157,13 @@ picture). Interactive Window input and output work the same as a notebook's.
 | `smilesHover.colorPreset`          | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette.    |
 | `smilesHover.retentionMinutes`     | `15`       | How long a hand-render stays hoverable, minutes. |
 
-With `autoSize` on (the default), the whole structure is always visible at a
-legible scale: the canvas area grows with the atom count, and its aspect ratio
-is taken from the generated 2D layout, so a long molecule gets a wide render
-rather than a thin band floating in an empty box. `imageWidth`/`imageHeight`
-set the base size this scales from. Turn `autoSize` off to pin every render to
-exactly those dimensions.
+With `autoSize` on (the default), the canvas is sized from the molecule's own
+2D layout at a fixed scale — a bond is always the same number of pixels — so
+every structure is drawn at one scale with one line weight, the way a page of
+chemistry looks. Ethanol comes out small and imatinib comes out wide, both
+legible. Molecules past the maximum canvas shrink to fit.
+`imageWidth`/`imageHeight` scale that whole drawing up or down. Turn `autoSize`
+off to pin every render to exactly those dimensions.
 
 Render size and *displayed* size are separate. VS Code's hover has a limited
 height — roughly a quarter of the editor's — and clips content that overflows
