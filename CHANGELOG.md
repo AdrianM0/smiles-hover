@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- **Fix: hovers in cell output never worked.** The renderer was contributed
+  under `notebookRenderers`; the contribution point is `notebookRenderer`,
+  singular, so VS Code ignored it and the renderer was never loaded. Cell
+  sources were unaffected.
+- Output hovers no longer wait on the validity round trip — the picture
+  request answers the same question, so a slow or lost reply costs nothing.
+- Molecules are tracked as elements rather than found by document query, so
+  verdicts still land if an output renders into a shadow root.
+
 ## 1.1.0
 
 - **Jupyter notebooks**, in cell sources and cell outputs alike. Sources —

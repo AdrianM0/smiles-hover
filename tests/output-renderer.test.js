@@ -7,7 +7,7 @@ const test = require("node:test");
 const { JSDOM } = require("jsdom");
 
 /** Load the bundle fresh, with a DOM in place, and activate it. */
-async function mount(html) {
+async function mount(html, { messaging = true } = {}) {
   const dom = new JSDOM(`<!doctype html><body>${html}</body>`, {
     pretendToBeVisual: true,
   });
@@ -18,7 +18,7 @@ async function mount(html) {
   const sent = [];
   let listener = () => {};
   const context = {
-    postMessage: (message) => sent.push(message),
+    postMessage: messaging ? (message) => sent.push(message) : undefined,
     onDidReceiveMessage: (fn) => (listener = fn),
   };
 
@@ -56,8 +56,31 @@ test("wraps molecules in printed output and asks the host about them", async () 
   assert.deepEqual(out.sent, [
     { type: "check", smiles: ["CC(=O)Oc1ccccc1C(=O)O"] },
   ]);
-  // Nothing is hoverable until the host has vouched for it.
-  assert.ok(out.hits()[0].className.includes("pending"));
+});
+
+test("a hover works before the verdict arrives", async () => {
+  // The picture request answers the same question, so a slow or lost check
+  // costs nothing.
+  const out = await mount(`<pre id="o">smiles: CCO</pre>`);
+  out.render("#o");
+
+  out.hits()[0].dispatchEvent(
+    new out.dom.window.MouseEvent("mouseover", { bubbles: true })
+  );
+  assert.deepEqual(out.sent.at(-1), { type: "render", smiles: "CCO" });
+});
+
+test("without messaging nothing is marked up", async () => {
+  // No host means no RDKit and no pictures; an underline would promise a
+  // hover that can't arrive.
+  const out = await mount(`<pre id="o">smiles: CCO</pre>`, { messaging: false });
+  out.render("#o");
+
+  assert.deepEqual(out.hits(), []);
+  assert.equal(
+    out.dom.window.document.querySelector("#o").textContent,
+    "smiles: CCO"
+  );
 });
 
 test("a SMILES column header vouches for the cells under it", async () => {

@@ -1,14 +1,9 @@
 import { blockDeclaresSmiles, findCandidates } from "./scan";
 
 /**
- * Hovers for SMILES in cell *output*.
- *
- * Output isn't a document — it's DOM in a webview, so the hover provider API
- * can't reach it. This runs inside the notebook renderer instead, extending
- * the built-in one: after it has drawn the output, we walk the text, wrap the
- * molecules, and put up our own tooltip. RDKit stays in the extension host —
- * far too big to ship into every webview — so validity and pictures both
- * arrive by message.
+ * Hovers for SMILES in cell output, which is DOM in a webview rather than a
+ * document. Runs after the built-in renderer, wrapping molecules in the text
+ * it drew. RDKit stays in the host, so verdicts and pictures arrive by message.
  */
 
 /** The slice of the renderer API we use. */
@@ -27,11 +22,13 @@ type HostMessage =
   | { type: "rendered"; smiles: string; dataUri?: string };
 
 const HIT = "smiles-hover-hit";
-const PENDING = "smiles-hover-pending";
 
 /** Verdicts and pictures, per webview. Both are answers to a round trip. */
 const known = new Map<string, boolean>();
 const pictures = new Map<string, string | null>();
+
+/** Spans awaiting a verdict. Held, not queried: outputs may be in shadow roots. */
+const awaiting = new Set<HTMLElement>();
 
 export function activate(context: RendererContext) {
   injectStyle();
@@ -51,9 +48,8 @@ export function activate(context: RendererContext) {
 
   document.addEventListener("mouseover", (event) => {
     const hit = (event.target as HTMLElement | null)?.closest?.(`.${HIT}`);
-    if (hit instanceof HTMLElement && !hit.classList.contains(PENDING)) {
-      tooltip.show(hit);
-    }
+    // No wait for the verdict — the picture request asks the same question.
+    if (hit instanceof HTMLElement) tooltip.show(hit);
   });
   document.addEventListener("mouseout", (event) => {
     const hit = (event.target as HTMLElement | null)?.closest?.(`.${HIT}`);
@@ -74,6 +70,9 @@ export function activate(context: RendererContext) {
 
 /** Wrap every candidate in `element`, then ask the host which are real. */
 function markUp(element: HTMLElement, context: RendererContext): void {
+  // No messaging, no pictures — don't promise a hover that can't arrive.
+  if (!context.postMessage) return;
+
   const text = element.innerText ?? element.textContent ?? "";
   if (!text) return;
   const declared = blockDeclaresSmiles(text);
@@ -105,14 +104,23 @@ function markUp(element: HTMLElement, context: RendererContext): void {
       const before = node.nodeValue!.slice(at, candidate.start);
       if (before) fragment.append(before);
 
+      const verdict = known.get(candidate.text);
+      if (verdict === false) {
+        fragment.append(candidate.text); // known not to be a molecule
+        at = candidate.end;
+        continue;
+      }
+
       const span = document.createElement("span");
-      span.className = known.get(candidate.text) === false ? "" : HIT;
-      if (!known.has(candidate.text)) span.classList.add(PENDING);
+      span.className = HIT;
       span.dataset.smiles = candidate.text;
       span.textContent = candidate.text;
       fragment.append(span);
 
-      if (!known.has(candidate.text)) seen.add(candidate.text);
+      if (verdict === undefined) {
+        awaiting.add(span);
+        seen.add(candidate.text);
+      }
       at = candidate.end;
     }
     const rest = node.nodeValue!.slice(at);
@@ -127,11 +135,10 @@ function markUp(element: HTMLElement, context: RendererContext): void {
 
 /** Apply verdicts that have arrived to the spans still waiting on them. */
 function settle(): void {
-  for (const span of document.querySelectorAll<HTMLElement>(`.${PENDING}`)) {
-    const smiles = span.dataset.smiles ?? "";
-    const verdict = known.get(smiles);
+  for (const span of [...awaiting]) {
+    const verdict = known.get(span.dataset.smiles ?? "");
     if (verdict === undefined) continue;
-    span.classList.remove(PENDING);
+    awaiting.delete(span);
     // Not a molecule after all — put the plain text back.
     if (!verdict) span.replaceWith(span.textContent ?? "");
   }
@@ -204,7 +211,6 @@ function injectStyle(): void {
       text-underline-offset: 2px;
       cursor: help;
     }
-    .${HIT}.${PENDING} { text-decoration: none; cursor: inherit; }
     .smiles-hover-tooltip {
       position: fixed;
       z-index: 100;
