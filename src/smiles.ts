@@ -1,37 +1,13 @@
 /**
- * Clean a user-selected string into something we can hand to RDKit.
- *
- * When users select SMILES from JSON/JSONL/log dumps, the selection often
- * picks up extra junk: surrounding quotes, trailing commas, escape
- * sequences like `\n` or `\"`. We strip that lot before sending to the
- * renderer.
- *
- * What gets stripped:
- *   - Surrounding whitespace
- *   - Surrounding quotes (single, double, backtick)
- *   - Leading/trailing escape sequences (\n, \t, \r, \\, \", \')
- *   - Trailing punctuation that can't end a SMILES (, ; comma, semicolon)
- *   - Dangling bond-direction operators (lone trailing / or \)
- *   - Leading bond operators (= # $ : . — none can start a valid SMILES)
- *
- * What we don't do: validate the result. That's RDKit's job and the user
- * gets a clean error message if it fails.
- */
-/**
- * Characters that can be part of a SMILES token. Used to reject matches that
- * are only a fragment of a longer run of text: `CCO` shouldn't match inside
- * `CCOCC` (a different molecule) or inside the word `Cocoa`. SMILES in the
- * wild sit inside quotes, whitespace or delimiters, all outside this class.
+ * Characters that can be part of a SMILES token. Rejects fragments of longer
+ * runs: `CCO` shouldn't match inside `CCOCC` or inside `Cocoa`.
  */
 export const SMILES_CHAR = /[A-Za-z0-9@+\-[\]()\\/#=%.:$*]/;
 
 /**
- * Find the occurrence of `needle` in `line` that `character` sits inside, as a
- * whole delimited token. Returns its `[start, end)` offsets, or undefined.
- *
- * This is how a remembered molecule is re-located on hover: the SMILES string
- * is searched for afresh rather than being pinned to the position it was
- * rendered at, so it survives edits and matches every occurrence.
+ * The occurrence of `needle` that `character` sits inside, as a whole token.
+ * Returns `[start, end)`, or undefined. Searching afresh rather than pinning a
+ * position is what makes a remembered molecule survive edits.
  */
 export function tokenOccurrenceAt(
   line: string,
@@ -49,15 +25,15 @@ export function tokenOccurrenceAt(
   return undefined;
 }
 
+/** Strip what a selection picks up: quotes, commas, escapes like `\n`. */
 export function cleanSmiles(raw: string): string {
   let s = raw.trim();
   if (!s) return s;
 
-  // First pass: strip outer trailing commas/semicolons that prevent quote
-  // pairs from being detected as a pair.
+  // Before the quotes, or a trailing comma hides the closing one.
   s = s.replace(/[,;]+$/, "");
 
-  // Outer quote pairs (repeated, in case of `\"...\"` wrapping `"..."`).
+  // Repeated, for `\"...\"` wrapping `"..."`.
   const quotePairs: Array<[string, string]> = [
     ['"', '"'],
     ["'", "'"],
@@ -82,14 +58,14 @@ export function cleanSmiles(raw: string): string {
     if (!stripped) break;
   }
 
-  // Iteratively strip leading garbage.
+  // Leading junk.
   while (s.length > 0) {
     const lead = s.match(/^(?:\\[ntr\\"']|[=#$:./\\,;])/);
     if (!lead) break;
     s = s.slice(lead[0].length);
   }
 
-  // Iteratively strip trailing garbage.
+  // Trailing junk.
   while (s.length > 0) {
     const tail = s.match(/(?:\\[ntr\\"']|[/\\.,;])$/);
     if (!tail) break;

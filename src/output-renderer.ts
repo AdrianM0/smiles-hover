@@ -1,9 +1,10 @@
 import { blockDeclaresSmiles, findCandidates } from "./scan";
 
 /**
- * Hovers for SMILES in cell output, which is DOM in a webview rather than a
- * document. Runs after the built-in renderer, wrapping molecules in the text
- * it drew. RDKit stays in the host, so verdicts and pictures arrive by message.
+ * Hovers for SMILES in cell output — DOM in a webview, not a document. Hooks
+ * the built-in renderer's HTML path (`df.head()`, `_repr_html_`) and wraps the
+ * molecules it drew. RDKit stays in the host, so verdicts and pictures arrive
+ * by message. Plain text and stdout offer no hook, so `print(smi)` is out.
  */
 
 /** The slice of the renderer API we use. */
@@ -15,7 +16,17 @@ interface OutputItem {
 interface RendererContext {
   postMessage?(message: unknown): void;
   onDidReceiveMessage?(listener: (message: HostMessage) => void): void;
+  getRenderer?(id: string): Promise<BuiltinRenderer | undefined>;
 }
+
+/** The base renderer. Its hooks are the only way in; ours are never called. */
+interface BuiltinRenderer {
+  experimental_registerHtmlRenderingHook?(hook: {
+    postRender(item: OutputItem, element: HTMLElement): void;
+  }): void;
+}
+
+const BUILTIN = "vscode.builtin-renderer";
 
 type HostMessage =
   | { type: "checked"; valid: Record<string, boolean> }
@@ -23,14 +34,17 @@ type HostMessage =
 
 const HIT = "smiles-hover-hit";
 
-/** Verdicts and pictures, per webview. Both are answers to a round trip. */
+/** Verdicts and pictures, per webview. Both come from the host. */
 const known = new Map<string, boolean>();
 const pictures = new Map<string, string | null>();
 
-/** Spans awaiting a verdict. Held, not queried: outputs may be in shadow roots. */
+/** Held, not queried later: an output may render into a shadow root. */
 const awaiting = new Set<HTMLElement>();
 
-export function activate(context: RendererContext) {
+export async function activate(context: RendererContext): Promise<void> {
+  const builtin = await context.getRenderer?.(BUILTIN);
+  if (!builtin?.experimental_registerHtmlRenderingHook) return;
+
   injectStyle();
   const tooltip = new Tooltip(context);
 
@@ -57,15 +71,11 @@ export function activate(context: RendererContext) {
   });
   window.addEventListener("scroll", () => tooltip.hide(), true);
 
-  return {
-    renderOutputItem(_item: OutputItem, element: HTMLElement) {
-      // The base renderer has just written this element; mark up what it drew.
+  builtin.experimental_registerHtmlRenderingHook({
+    postRender(_item, element) {
       markUp(element, context);
     },
-    disposeOutputItem() {
-      tooltip.hide();
-    },
-  };
+  });
 }
 
 /** Wrap every candidate in `element`, then ask the host which are real. */
@@ -79,7 +89,7 @@ function markUp(element: HTMLElement, context: RendererContext): void {
 
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      // Never mark up our own spans twice — outputs re-render on every run.
+      // Outputs re-render on every run; don't wrap twice.
       const parent = node.parentElement;
       if (parent?.closest(`.${HIT}`)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue?.trim()
@@ -173,7 +183,7 @@ class Tooltip {
 
     const rect = span.getBoundingClientRect();
     this.element.hidden = false;
-    // Below the token, or above it when there's no room below.
+    // Below the token, or above when there's no room.
     const below = rect.bottom + 8;
     const room = window.innerHeight - below;
     this.element.style.left = `${Math.max(4, Math.min(rect.left, window.innerWidth - 320))}px`;
@@ -181,7 +191,7 @@ class Tooltip {
       room > 200 ? `${below}px` : `${Math.max(4, rect.top - 260)}px`;
   }
 
-  /** A picture arrived; if it's the one on screen, put it up. */
+  /** A picture arrived; show it if it's the one on screen. */
   refresh(smiles: string): void {
     if (this.showing !== smiles || this.element.hidden) return;
     const picture = pictures.get(smiles);

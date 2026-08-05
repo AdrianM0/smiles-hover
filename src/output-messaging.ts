@@ -3,13 +3,12 @@ import { SmilesRenderer } from "./renderer";
 
 export const OUTPUT_RENDERER_ID = "smiles-hover-output";
 
-/** Most tokens one output may ask about, so a huge table can't flood the host. */
+/** Cap per output, so a huge table can't flood the host. */
 const MAX_BATCH = 200;
 
 /**
- * Serves the notebook output renderer, which runs in a webview and has no
- * RDKit: it sends the tokens it found, we say which are molecules, and it
- * asks for pictures one hover at a time.
+ * Serves the output renderer, which has no RDKit: it sends tokens, we say
+ * which are molecules, and it asks for pictures one hover at a time.
  */
 export function serveOutputRenderer(renderer: SmilesRenderer): vscode.Disposable {
   const messaging = vscode.notebooks.createRendererMessaging(

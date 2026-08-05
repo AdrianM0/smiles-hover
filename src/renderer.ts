@@ -57,8 +57,7 @@ const PRESETS: Record<string, Palette> = {
     35: [0.65, 0.16, 0.16],
     53: [0.58, 0.0, 0.83],
   },
-  // Everything black. MinimalLib has no useBWAtomPalette(), so we spell it out
-  // for the elements that would otherwise pick up a default colour.
+  // MinimalLib has no useBWAtomPalette(), so spell it out.
   mono: {
     1: [0, 0, 0],
     5: [0, 0, 0],
@@ -121,11 +120,7 @@ export class SmilesRenderer {
     return ok;
   }
 
-  /**
-   * Load the RDKit WASM module. Deferred until the first render so extension
-   * startup stays cheap — the module is ~7 MB and takes a moment to
-   * instantiate. Cached for the session.
-   */
+  /** Load RDKit. Deferred to the first render: ~7 MB, slow to instantiate. */
   private load(): Promise<RDKitModule> {
     if (!this.rdkit) {
       this.rdkit = (async () => {
@@ -136,9 +131,7 @@ export class SmilesRenderer {
         const mod: RDKitModule = await initRDKitModule({
           locateFile: () => wasmPath,
         });
-        // CoordGen gives ChemDraw-like geometry; RDKit's default layout is
-        // more utilitarian.
-        mod.prefer_coordgen(true);
+        mod.prefer_coordgen(true); // ChemDraw-like geometry
         // Auto-detection asks about tokens that aren't molecules. Expected.
         mod.disable_logging?.();
         return mod;
@@ -191,8 +184,7 @@ export class SmilesRenderer {
 
     let mol: RDKitMol | null = null;
     try {
-      // MinimalLib returns null for bad input, but older builds throw — handle
-      // both.
+      // MinimalLib returns null for bad input; older builds throw.
       mol = rdkit.get_mol(smiles);
     } catch {
       mol = null;
@@ -215,20 +207,10 @@ export class SmilesRenderer {
 }
 
 /**
- * Shrink the SVG's *displayed* size to fit inside a hover popup, leaving the
- * viewBox alone.
- *
- * VS Code's hover widget is small — its max height is derived from the editor
- * height (roughly a quarter of it, with a floor around 250px), and markdown
- * images render at their intrinsic size. An image taller than that isn't
- * scaled to fit, it's clipped behind a scrollbar, so half the molecule
- * disappears.
- *
- * Because the render is vector, display size and render size are independent:
- * the canvas can stay large (which is what gives the layout room and keeps
- * atom labels from colliding) while the intrinsic width/height come down to
- * something the hover will actually show in full. Scaling is uniform, so the
- * aspect ratio survives.
+ * Shrink the SVG's *displayed* size to fit the hover, leaving the viewBox
+ * alone. VS Code clips oversized markdown images rather than scaling them, and
+ * since this is vector, the canvas can stay large — which is what keeps atom
+ * labels from colliding — while the intrinsic size comes down.
  */
 function fitForHover(svg: string, maxW: number, maxH: number): string {
   const m = svg.match(
@@ -245,8 +227,7 @@ function fitForHover(svg: string, maxW: number, maxH: number): string {
 
   const dispW = Math.round(w * scale);
   const dispH = Math.round(h * scale);
-  // Replace only the root element's width/height; the viewBox stays as-is so
-  // the drawing scales rather than being cropped.
+  // Root width/height only — the viewBox stays, so it scales, not crops.
   return svg.replace(
     m[0],
     m[0]
@@ -256,12 +237,9 @@ function fitForHover(svg: string, maxW: number, maxH: number): string {
 }
 
 /**
- * Measure the 2D layout's bounding box from the molblock RDKit generates.
- * Returns width/height in molfile coordinate units.
- *
- * Molblock atom lines are fixed-width: x, y, z each in a 10-char field,
- * starting at line 4 (0-indexed), with the atom count in the first 3 chars
- * of the counts line.
+ * The layout's bounding box, in molfile units. Molblock atom lines are fixed
+ * width — x, y, z in 10-char fields from line 4 — with the atom count in the
+ * first 3 chars of the counts line.
  */
 function layoutBBox(molblock: string): { w: number; h: number } | undefined {
   const lines = molblock.split("\n");
@@ -287,18 +265,10 @@ function layoutBBox(molblock: string): { w: number; h: number } | undefined {
 }
 
 /**
- * Pick a canvas that shows the whole structure at a legible scale.
- *
- * Two things go wrong with a fixed canvas. RDKit scales coordinates to fit
- * whatever it's given, so a big molecule isn't cropped — it's crushed, with
- * atom labels colliding into a pile. And a long thin molecule on a 10:7
- * canvas fits to width, wasting most of the height and shrinking the
- * structure for no reason.
- *
- * So: grow the *area* with the atom count (sub-linear, since 2D layouts
- * spread in both dimensions), and match the *aspect* to the actual layout.
- * Both are clamped — a popup shouldn't be taller than the editor, and
- * decane shouldn't render as a 15:1 ribbon.
+ * A canvas that shows the whole structure legibly. RDKit fits coordinates to
+ * whatever canvas it's given, so a fixed one crushes big molecules into a pile
+ * of colliding labels. Grow the area with the atom count and take the aspect
+ * from the layout; clamp both, or decane renders as a 15:1 ribbon.
  */
 function canvasFor(
   mol: RDKitMol,
@@ -333,9 +303,8 @@ function canvasFor(
 }
 
 /**
- * Drawing options approximating RDKit's ACS 1996 preset (which MinimalLib
- * doesn't expose) plus the on-screen tuning it needs: ACS bond widths are
- * calibrated for print density and read as spidery in a hover popup.
+ * RDKit's ACS 1996 preset, which MinimalLib doesn't expose, plus screen
+ * tuning — ACS bond widths are for print and read as spidery in a popup.
  */
 function drawOptions(width: number, height: number, preset: string) {
   return {
@@ -348,10 +317,8 @@ function drawOptions(width: number, height: number, preset: string) {
     // Bolder than ACS print defaults so the molecule pops on screen.
     bondLineWidth: 2.4,
     scaleBondWidth: true,
-    // No fixedFontSize: it pins labels at one size regardless of how dense
-    // the structure is, so anything bigger than a drug fragment ends up with
-    // labels overlapping the bonds. Let RDKit scale them to the drawing, with
-    // a floor that keeps them readable.
+    // No fixedFontSize: it overlaps labels on anything dense. Scale, with a
+    // floor that stays readable.
     minFontSize: 12,
     maxFontSize: 22,
     annotationFontScale: 0.75,

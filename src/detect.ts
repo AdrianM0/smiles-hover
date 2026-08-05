@@ -3,11 +3,9 @@ import { SmilesRenderer } from "./renderer";
 import { candidateAt, declaresSmilesColumn, findCandidates } from "./scan";
 
 /**
- * Finds the SMILES on screen and gets them drawn before anyone hovers them.
- *
- * Nothing is stored per document — scanning warms the renderer's caches, which
- * are keyed by the string itself, so edits and scrolling need no invalidation
- * and a hover on unscanned text still works, just a beat slower.
+ * Draws the SMILES on screen before anyone hovers them. Nothing is stored per
+ * document: scanning only warms caches keyed by the string, so edits need no
+ * invalidation and an unscanned hover still works, a beat slower.
  */
 export class Detector {
   /** Bumped on every new scan; in-flight work checks it and gives up. */
@@ -55,10 +53,7 @@ export class Detector {
     };
   }
 
-  /**
-   * Validate and draw everything in view. Yields between molecules to keep
-   * the host free.
-   */
+  /** Validate and draw everything in view, yielding between molecules. */
   private async scan(): Promise<void> {
     const cfg = config();
     const mine = ++this.generation;
@@ -98,9 +93,8 @@ interface Region {
 }
 
 /**
- * What to scan: the viewport plus a margin so a small scroll lands on warm
- * ground. In a notebook that means every visible cell — each is its own
- * document, and cells are short enough to take whole.
+ * The viewport plus a margin, so a small scroll lands on warm ground. In a
+ * notebook: every visible cell, each its own document, taken whole.
  */
 function visibleRegions(margin: number): Region[] {
   const notebook = vscode.window.activeNotebookEditor;
@@ -132,7 +126,7 @@ function visibleRegions(margin: number): Region[] {
 const CELL_MARGIN = 2;
 const MAX_CELL = 500;
 
-/** Checked on the first few lines, so a comment doesn't hide the header. */
+/** First few lines, so a comment doesn't hide the header. */
 function hasSmilesHeader(doc: vscode.TextDocument): boolean {
   const limit = Math.min(doc.lineCount, 3);
   for (let line = 0; line < limit; line++) {

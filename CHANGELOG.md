@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2
+
+- **Fix: output hovers still didn't appear.** 1.1.1 fixed the manifest, but the
+  renderer used the wrong contract — an extending renderer's own
+  `renderOutputItem` is never called. It has to fetch the base renderer with
+  `getRenderer("vscode.builtin-renderer")` and register a hook, which is what
+  it now does.
+- Output hovers therefore cover **HTML outputs** — `df.head()` and anything
+  with `_repr_html_`. The built-in renderer offers hooks for HTML and
+  JavaScript only, so `print(smi)` and stdout can't be reached this way.
+
 ## 1.1.1
 
 - **Fix: hovers in cell output never worked.** The renderer was contributed

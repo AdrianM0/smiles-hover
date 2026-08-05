@@ -17,9 +17,17 @@ async function mount(html, { messaging = true } = {}) {
 
   const sent = [];
   let listener = () => {};
+  let hook;
+  // The built-in renderer draws the output and hands extenders a hook; our
+  // own renderOutputItem would never be called.
+  const builtin = {
+    experimental_registerHtmlRenderingHook: (h) => (hook = h),
+  };
   const context = {
     postMessage: messaging ? (message) => sent.push(message) : undefined,
     onDidReceiveMessage: (fn) => (listener = fn),
+    getRenderer: async (id) =>
+      id === "vscode.builtin-renderer" ? builtin : undefined,
   };
 
   // Cache-bust so each test gets its own module state.
@@ -27,21 +35,27 @@ async function mount(html, { messaging = true } = {}) {
     require.resolve("../out/renderer/output.js")
   );
   const mod = await import(`${url}?t=${Math.random()}`);
-  const renderer = mod.activate(context);
+  await mod.activate(context);
 
   return {
     dom,
     sent,
-    renderer,
+    hooked: () => hook !== undefined,
     send: (message) => listener(message),
     hits: () => [...dom.window.document.querySelectorAll("[data-smiles]")],
     render: (selector) =>
-      renderer.renderOutputItem(
-        { id: "1", mime: "text/plain" },
+      hook?.postRender(
+        { id: "1", mime: "text/html" },
         dom.window.document.querySelector(selector)
       ),
   };
 }
+
+test("registers a hook on the built-in renderer", async () => {
+  // Our own renderOutputItem is never called; the hook is the only way in.
+  const out = await mount(`<pre id="o">x</pre>`);
+  assert.ok(out.hooked());
+});
 
 test("wraps molecules in printed output and asks the host about them", async () => {
   const out = await mount(

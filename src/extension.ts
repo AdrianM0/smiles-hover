@@ -8,30 +8,18 @@ let renderer: SmilesRenderer;
 let detector: Detector;
 
 /**
- * A molecule the user has rendered, kept so it can be hovered again.
- *
- * Keyed by the SMILES itself rather than by where it was rendered: the string
- * is the identity of the molecule, and the same string means the same picture
- * wherever it turns up. Position is looked up fresh on every hover instead of
- * being stored, so edits, moved lines and repeated occurrences all just work.
+ * A molecule the user rendered by hand. Keyed by the SMILES, not the place:
+ * position is looked up fresh on each hover, so edits and repeats just work.
  */
 interface RememberedMolecule {
   smiles: string;
   svg: string;
   expiresAt: number;
-  /**
-   * Where it was first rendered. A fallback for selections that aren't
-   * delimited — a SMILES picked out of the middle of a longer token won't be
-   * found by the text scan, but the user did explicitly render it there.
-   */
+  /** Fallback for selections the text scan won't find: mid-token picks. */
   anchor: { uri: string; range: vscode.Range };
 }
 
-/**
- * Remembered molecules, oldest first (Map keeps insertion order). Entries
- * expire on their own TTL; we prune lazily on access rather than running a
- * timer, and cap the map so a long session can't hold SVGs without bound.
- */
+/** Oldest first. Pruned lazily on access, capped so a long session can't grow. */
 const remembered = new Map<string, RememberedMolecule>();
 
 const MAX_ENTRIES = 64;
@@ -106,8 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeNotebookEditorVisibleRanges(() =>
       detector.schedule()
     ),
-    // Cells added, removed, or run — outputs aren't hoverable, but the sources
-    // around them have moved.
+    // Cells added, removed or run: the sources around them have moved.
     vscode.workspace.onDidChangeNotebookDocument(() => detector.schedule()),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (isOnScreen(e.document)) detector.schedule();
@@ -139,11 +126,7 @@ function isOnScreen(doc: vscode.TextDocument): boolean {
   return doc.uri.scheme === "vscode-notebook-cell" && !!notebook;
 }
 
-/**
- * Hover provider. Auto-detection first — the token under the cursor, if RDKit
- * says it's chemistry — then anything the user rendered by hand, which covers
- * SMILES the token scanner won't pick out on its own.
- */
+/** Auto-detection first, then anything rendered by hand. */
 async function provideHover(
   doc: vscode.TextDocument,
   pos: vscode.Position,
@@ -161,7 +144,7 @@ async function provideHover(
         detected.range
       );
     } catch {
-      // Parses but won't draw. Fall through — a remembered entry may cover it.
+      // Parses but won't draw; a remembered entry may still cover it.
     }
   }
 
@@ -178,9 +161,7 @@ function rememberedHover(
 
   const line = doc.lineAt(pos.line).text;
 
-  // Longest match wins, so that hovering inside `CCO` while both `CCO` and
-  // `CCOc1ccccc1` are remembered picks whichever one the cursor is actually
-  // sitting in. Entries are newest first, so ties go to the recent render.
+  // Longest match wins; entries are newest first, so ties go to the recent one.
   let hit: RememberedMolecule | undefined;
   let range: vscode.Range | undefined;
   for (const entry of entries) {
@@ -192,8 +173,7 @@ function rememberedHover(
   }
 
   if (!hit) {
-    // Nothing found by text; fall back to the spot it was rendered at, as long
-    // as that text still says what it said then.
+    // Fall back to where it was rendered, if that text still says the same.
     hit = entries.find(
       (e) =>
         e.anchor.uri === doc.uri.toString() &&
@@ -218,10 +198,7 @@ function moleculeMarkdown(smiles: string, svg: string): vscode.MarkdownString {
   return md;
 }
 
-/**
- * Locate `smiles` on the cursor's line. SMILES never span lines, so that line
- * is the whole search space.
- */
+/** SMILES never span lines, so the cursor's line is the search space. */
 function occurrenceAt(
   line: string,
   pos: vscode.Position,

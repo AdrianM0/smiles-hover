@@ -1,9 +1,8 @@
 import { SMILES_CHAR } from "./smiles";
 
 /**
- * How strongly the surrounding text vouches for a token. Short featureless
- * strings need vouching for: `ISC`, `CSS`, `CNN` and `SNP` all parse as
- * molecules and none are meant as one.
+ * How strongly the text vouches for a token. `ISC`, `CSS`, `CNN` and `SNP` all
+ * parse as molecules and none are meant as one, so short ones need vouching.
  */
 export type Context =
   /** After a `smiles:` key, alone on its line, or in a file with a SMILES column. */
@@ -34,10 +33,7 @@ const SEPARATORS = "\t,;|";
 /** Anything that tells a structure from an acronym. */
 const STRUCTURAL = /[()[\]=#@/\\1-9]|Cl|Br|[bcnops]/;
 
-/**
- * Split a line into SMILES-shaped tokens: runs of SMILES characters, with the
- * edges trimmed of characters that can't legally sit there.
- */
+/** Runs of SMILES characters, edges trimmed of what can't legally sit there. */
 export function findCandidates(
   line: string,
   minLength = 4,
@@ -102,8 +98,7 @@ function trimToken(
     while (s < e && LEADING_JUNK.test(line[s])) s++;
     while (s < e && TRAILING_JUNK.test(line[e - 1])) e--;
 
-    // Brackets from the surrounding text: `(CCO` in `(CCO and`, `CCO)` in
-    // `(see CCO)`. Only ever drop the unmatched one.
+    // Brackets from the text around it — only drop the unmatched one.
     const text = line.slice(s, e);
     if (count(text, ")") > count(text, "(") && line[e - 1] === ")") e--;
     else if (count(text, "(") > count(text, ")") && line[s] === "(") s++;
@@ -111,9 +106,8 @@ function trimToken(
     if (count(text, "]") > count(text, "[") && line[e - 1] === "]") e--;
     else if (count(text, "[") > count(text, "]") && line[s] === "[") s++;
 
-    // Square brackets around the whole token — a markdown link, an array
-    // literal. A real bracket atom holds one atom, never a branch or a bond.
-    // `[Na+].[Cl-]` merely starts and ends with brackets, hence the indexOf.
+    // Brackets wrapping the whole token — a markdown link, an array literal.
+    // A bracket atom holds one atom; `[Na+].[Cl-]` merely starts with one.
     if (
       line[s] === "[" &&
       line.indexOf("]", s + 1) === e - 1 &&
@@ -136,36 +130,28 @@ function count(s: string, ch: string): number {
 }
 
 /**
- * Does the line say the value is a SMILES — `smiles: x`, `"SMILES" = x`, or a
- * call that takes one? No word boundary in front, so `MolFromSmiles("CCO")`,
- * the most-typed line in any chemistry notebook, counts.
+ * `smiles: x`, `"SMILES" = x`, or a call taking one. No word boundary in
+ * front, so `MolFromSmiles("CCO")` counts.
  */
 function hasSmilesKey(line: string): boolean {
   return /smiles["'`\]]*\s*[:=(]/i.test(line);
 }
 
-/**
- * Does this header row name a SMILES column? A CSV of molecules says so once,
- * at the top; one line of context then vouches for every bare cell below it.
- */
+/** A CSV says `smiles` once, at the top, and vouches for every cell below. */
 export function declaresSmilesColumn(headerLine: string): boolean {
   if (headerLine.length > MAX_LINE) return false;
-  // Two or more spaces is a column gutter — that's how printed DataFrames and
-  // aligned tables separate fields, where a CSV would use a comma.
+  // Two or more spaces is a column gutter, as printed DataFrames use.
   const fields = headerLine.split(/[\t,;|]|\s{2,}/);
   if (fields.length < 2) return false;
-  // A whole field that is the word, give or take a qualifier:
-  // `canonical_smiles`, `"smiles"`.
+  // A whole field that is the word: `canonical_smiles`, `"smiles"`.
   return fields.some((f) =>
     /^["'`\s]*\w*[_ ]?smiles?[_ ]?\w*["'`\s]*$/i.test(f)
   );
 }
 
 /**
- * Does a block of text — a cell output, a table — announce SMILES anywhere in
- * it? Output is walked a text node at a time, so a column header and its
- * values never share a line; this is what carries the header's promise down
- * to the cells.
+ * Same, for a whole block. Output is walked a text node at a time, so a header
+ * and its values never share a line.
  */
 export function blockDeclaresSmiles(text: string): boolean {
   return text
@@ -218,8 +204,7 @@ function isPlausible(
   if (text.length < minLength) return false;
   if (STRUCTURAL.test(text)) return true;
 
-  // Letters only, no structure. Fine in a column; in prose it's an acronym
-  // until it's longer than anyone abbreviates — decane is `CCCCCCCCCC`.
+  // Letters only: an acronym in prose until longer than anyone abbreviates.
   return context === "field" || text.length >= 8;
 }
 
@@ -229,18 +214,16 @@ const AROMATIC = "bcnops";
 const OPERATORS = "()=#-+/\\.:$*~@";
 
 /**
- * Could this be SMILES at all, by the grammar's character rules? Outside
- * square brackets only ten element symbols are legal and only six letters may
- * be lowercase, which rules out essentially every English word — and so keeps
- * hundreds of tokens a screenful from waking RDKit to be told the obvious.
+ * Could this be SMILES at all? Outside brackets only ten element symbols are
+ * legal and six letters may be lowercase — which excludes English, and so
+ * keeps hundreds of tokens a screenful from waking RDKit.
  */
 function syntaxOk(text: string): boolean {
   let i = 0;
   while (i < text.length) {
     const ch = text[i];
 
-    // Bracket atoms may say anything ([Na+], [C@@H], [13C]); leave them to the
-    // parser.
+    // Bracket atoms may say anything; leave them to the parser.
     if (ch === "[") {
       const close = text.indexOf("]", i + 1);
       if (close === -1) return false;
