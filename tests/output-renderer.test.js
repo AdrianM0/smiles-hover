@@ -264,3 +264,62 @@ test("a reaction in output is one hit, not two molecules", async () => {
     ["CCO.CC(=O)O>[H+]>CCOC(C)=O.O"]
   );
 });
+
+test("a printed list is scanned a line at a time", async () => {
+  // `print()` arrives as one text node, newlines and all. Read whole it was
+  // one long line of prose, where a bare `CCO` is an acronym; read by lines
+  // each of these is alone on its own, which is a molecule at any length.
+  const out = await mount();
+  await out.render(`<pre id="o">CCO\nCCN\nCC(=O)O</pre>`);
+
+  assert.deepEqual(
+    out.hits().map((s) => s.dataset.smiles),
+    ["CCO", "CCN", "CC(=O)O"]
+  );
+});
+
+test("a screenful of print output is not too long to scan", async () => {
+  // The scanner skips lines over 2000 characters as minified data. A block of
+  // 200 printed rows is not one such line, but it was being handed over as if
+  // it were — and nothing in it was ever found.
+  const out = await mount();
+  const rows = Array.from(
+    { length: 200 },
+    (_, i) => `row ${i}: CC(=O)Oc1ccccc1C(=O)O`
+  ).join("\n");
+  await out.render(`<pre id="o">${rows}</pre>`);
+
+  assert.equal(out.hits().length, 200);
+});
+
+test("the picture goes beside the token, not at the end of the output", async () => {
+  // A long output put it hundreds of lines below whatever was hovered, or
+  // past the bottom of an output that scrolls — off screen either way.
+  const out = await mount();
+  await out.render(`<pre id="o">smiles: CCO\n${"filler\n".repeat(300)}</pre>`);
+  out.send({ type: "checked", valid: { CCO: true } });
+
+  const span = out.hits()[0];
+  span.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+
+  const tooltip = out.dom.window.document.querySelector(".smiles-hover-tooltip");
+  assert.equal(span.nextElementSibling, tooltip, "not next to the token");
+  assert.ok(tooltip.classList.contains("smiles-hover-inline"));
+});
+
+test("in a table the picture stays in the cell it was hovered in", async () => {
+  // A <div> foster-parented out of a table row lands somewhere unrelated.
+  const out = await mount();
+  await out.render(`<table id="o">
+    <thead><tr><th>smiles</th></tr></thead>
+    <tbody><tr><td>CCO</td></tr><tr><td>CCN</td></tr></tbody>
+  </table>`);
+  out.send({ type: "checked", valid: { CCO: true, CCN: true } });
+
+  const span = out.hits()[1];
+  span.dispatchEvent(new out.dom.window.MouseEvent("mouseover", { bubbles: true }));
+
+  const tooltip = out.dom.window.document.querySelector(".smiles-hover-tooltip");
+  assert.equal(tooltip.parentElement.tagName, "TD");
+  assert.equal(tooltip.parentElement.textContent.trim(), "CCN");
+});

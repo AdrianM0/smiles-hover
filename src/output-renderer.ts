@@ -1,4 +1,4 @@
-import { blockDeclaresSmiles, findCandidates } from "./scan";
+import { Candidate, blockDeclaresSmiles, findCandidates } from "./scan";
 
 /**
  * Hovers for SMILES in cell output — DOM in a webview, not a document. The
@@ -124,7 +124,7 @@ function markUp(element: HTMLElement, context: RendererContext): void {
 
   const seen = new Set<string>();
   for (const node of targets) {
-    const found = findCandidates(node.nodeValue ?? "", 4, declared);
+    const found = candidatesIn(node.nodeValue ?? "", declared);
     if (found.length === 0) continue;
 
     const fragment = document.createDocumentFragment();
@@ -162,6 +162,27 @@ function markUp(element: HTMLElement, context: RendererContext): void {
   }
 }
 
+/**
+ * Candidates in a text node, a line at a time, with offsets into the whole.
+ *
+ * `print()` hands over its entire output as one text node, newlines and all,
+ * while the scanner is written for lines: it caps how long one may be, and a
+ * token alone on its line is what vouches for a bare `CCO`. Passing the block
+ * in whole made a printed list read as one enormous line of prose — and a
+ * screenful of output exceeded the cap, so nothing in it was found at all.
+ */
+function candidatesIn(value: string, declared: boolean): Candidate[] {
+  const found: Candidate[] = [];
+  let offset = 0;
+  for (const line of value.split("\n")) {
+    for (const c of findCandidates(line, 4, declared)) {
+      found.push({ ...c, start: c.start + offset, end: c.end + offset });
+    }
+    offset += line.length + 1; // the newline the split ate
+  }
+  return found;
+}
+
 /** Apply verdicts that have arrived to the spans still waiting on them. */
 function settle(): void {
   for (const span of [...awaiting]) {
@@ -174,13 +195,46 @@ function settle(): void {
 }
 
 /**
- * The outermost part of this output that has a size and doesn't clip.
+ * Where to slip the picture in: straight after the token it belongs to.
  *
- * Putting the picture here, in flow, makes the output grow: VS Code measures
- * it and moves the cells below out of the way. That's the only way to see the
- * whole thing — cells are painted over the webview, so nothing drawn on top of
- * one is visible. Wrappers with no height are what made an earlier attempt at
- * this invisible, hence the clientHeight test.
+ * In flow, so the output grows and VS Code moves the cells below out of the
+ * way — cells are painted over the webview, so a picture floating over one
+ * can't be seen. After the token rather than at the end of the output, because
+ * the end of a long `print()` or a scrolling output is nowhere near what the
+ * cursor is on. Nothing before the token moves, so the token can't slide out
+ * from under the cursor.
+ *
+ * A `<div>` inside a table row is foster-parented out of the table and lands
+ * somewhere unrelated, so from there we climb out to the table first. A `<td>`
+ * holds one fine.
+ */
+function anchorFor(span: HTMLElement): HTMLElement {
+  let node = span;
+  while (node.parentElement && TABLE_PARTS.has(node.parentElement.tagName)) {
+    node = node.parentElement;
+  }
+  return node;
+}
+
+/** Did it land somewhere an ancestor cuts off? Unmeasurable counts as fine. */
+function clipped(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false;
+
+  for (let n = element.parentElement; n && n !== document.body; n = n.parentElement) {
+    const style = getComputedStyle(n);
+    if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+    const box = n.getBoundingClientRect();
+    if (box.width === 0 && box.height === 0) continue;
+    if (rect.top >= box.bottom || rect.bottom <= box.top) return true;
+    if (rect.left >= box.right || rect.right <= box.left) return true;
+  }
+  return false;
+}
+
+/**
+ * The outermost part of this output that has a size and doesn't clip — the
+ * region the cursor may roam without the picture being dismissed.
  */
 function growable(span: HTMLElement): HTMLElement | undefined {
   let found: HTMLElement | undefined;
@@ -204,6 +258,8 @@ class Tooltip {
   private showing: string | undefined;
   /** The output the picture was put in; the cursor may roam anywhere in it. */
   private host: HTMLElement | undefined;
+  /** What the picture currently sits after. */
+  private anchor: HTMLElement | undefined;
   private maxW = 460;
   private maxH = 240;
   private hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -245,33 +301,38 @@ class Tooltip {
     this.place(span);
   }
 
-  /** In flow at the end of the output, so the notebook makes room for it. */
+  /** In flow right after the token, so the notebook makes room for it. */
   private place(span: HTMLElement): void {
-    const host = growable(span);
+    const anchor = anchorFor(span);
     this.maxW = Math.min(460, Math.max(160, window.innerWidth - 8));
     this.maxH = 240;
     this.element.style.maxWidth = `${this.maxW}px`;
     this.element.hidden = false;
-    this.element.classList.toggle(INLINE, !!host);
+    this.element.classList.add(INLINE);
 
-    // Re-appending to the same parent tears the element out and back in,
-    // which is a relayout and a visible flash.
-    const settled = host === this.host && this.element.isConnected;
-    this.host = host;
-    if (settled) {
-      this.resize();
-      return;
-    }
-    if (host) {
-      host.append(this.element);
-    } else {
-      // Nothing sized to grow: fall back to floating under the token.
-      const rect = span.getBoundingClientRect();
-      document.body.append(this.element);
-      this.element.style.top = `${rect.bottom + 4}px`;
-      this.element.style.left = `${Math.max(0, rect.left)}px`;
+    // Re-inserting at the same place tears the element out and back in, which
+    // is a relayout and a visible flash.
+    const settled = anchor === this.anchor && this.element.isConnected;
+    this.anchor = anchor;
+    this.host = growable(span);
+    if (!settled) {
+      this.element.style.top = "";
+      this.element.style.left = "";
+      anchor.after(this.element);
+      // Somewhere cut off after all — an output that scrolls, a cell holding
+      // its overflow. Float it under the token instead.
+      if (clipped(this.element)) this.float(span);
     }
     this.resize();
+  }
+
+  /** Last resort: over the output, anchored to the one honest rectangle. */
+  private float(span: HTMLElement): void {
+    const rect = span.getBoundingClientRect();
+    this.element.classList.remove(INLINE);
+    document.body.append(this.element);
+    this.element.style.top = `${rect.bottom + 4}px`;
+    this.element.style.left = `${Math.max(0, rect.left)}px`;
   }
 
   /** The SVG scales, so the picture shrinks to whatever room there was. */
@@ -311,6 +372,7 @@ class Tooltip {
     this.element.remove();
     this.showing = undefined;
     this.host = undefined;
+    this.anchor = undefined;
   }
 }
 

@@ -144,10 +144,17 @@ DataFrame, a `smiles` column header vouches for every cell beneath it, so a
 table of short entries like `CCO` comes alive whole — the same rule as a CSV's
 header row, applied to what `df.head()` printed.
 
-The picture appears **in the output**, which grows to fit it and pushes the
-cells below down. That's deliberate: VS Code paints cell editors over the
-output webview, so a picture floating above an output would be hidden by the
-next cell. Moving the cursor to another molecule swaps the picture in place.
+The picture appears **in the output, right after the molecule you hovered**,
+which grows the output and pushes the cells below down. That's deliberate: VS
+Code paints cell editors over the output webview, so a picture floating above
+an output would be hidden by the next cell. Putting it at the token rather than
+at the end of the output is what keeps it on screen when the output is a long
+print or one that scrolls. Nothing before the token moves, so the token can't
+slide out from under the cursor, and in a table the picture stays in its cell.
+
+Output is read a line at a time, so a printed column of SMILES — where each
+line holds nothing but a molecule — comes alive the same way a `smiles` column
+in a DataFrame does.
 
 Detection and rendering stay in the extension host — the webview sends tokens
 and gets back verdicts and pictures — so RDKit's 7 MB is never loaded into the

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.1
+
+- **Fix: `print()` output was mostly invisible to detection** ([#6]). A print
+  arrives as one text node, newlines and all, and it was handed to a scanner
+  written for lines: a printed list read as one long line of prose, where a
+  bare `CCO` is an acronym rather than a molecule, and anything over 2000
+  characters — a screenful of output — was skipped outright as minified data.
+  Output is now scanned a line at a time, so a printed column of SMILES comes
+  alive the way a DataFrame's already did.
+- **Fix: the picture landed at the bottom of long output** ([#5]). It was
+  appended to the end of the whole output, which for a long print or an output
+  that scrolls is nowhere near what you hovered — often off screen entirely.
+  It now goes in right after the token, so it appears where you are looking.
+  Nothing before the token moves, so the token can't slide out from under the
+  cursor; in a table it stays in the cell. If it lands somewhere cut off after
+  all, it falls back to floating under the token.
+
+[#5]: https://github.com/AdrianM0/smiles-hover/issues/5
+[#6]: https://github.com/AdrianM0/smiles-hover/issues/6
+
 ## 1.3.0
 
 - **Reaction SMILES are drawn as reactions.** A token in
