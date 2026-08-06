@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.0
+
+- **Reaction SMILES are drawn as reactions.** A token in
+  `reactants>agents>products` form — `CCO.CC(=O)O>[H+]>CCOC(C)=O.O` — draws
+  every component with `+` between them, the agents above the arrow, and the
+  arrow between the sides. Two `>` separators are required, so comparisons and
+  shift operators stay text. RDKit's own reaction drawing isn't used: it comes
+  out grey whatever the palette and its arrow has `nan` coordinates in this
+  build, so components are drawn individually and composed here, in the same
+  style as every other structure.
+- **Hovering works in every editor tab**, not just files and notebook cells:
+  read-only output tabs (agent and command output), diffs, the Output panel, a
+  notebook output opened in its own editor. Any document with a molecule in it.
+- Molecules are now drawn ahead in every *visible* editor, not only the focused
+  one, so output beside your code is warm before you reach it.
+- **Fix: `[H+]` and `[H][H]` drew a blank white box.** RDKit strips every atom
+  from them, and the layout comes back as `nan` coordinates. Blank drawings are
+  now rejected; as reaction components they're written as text instead.
+
 ## 1.2.0
 
 - **Fix: small molecules were drawn with bars for bonds** ([#4]). RDKit scales

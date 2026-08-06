@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { Detector } from "./detect";
 import { serveOutputRenderer } from "./output-messaging";
 import { SmilesRenderer } from "./renderer";
-import { cleanSmiles, tokenOccurrenceAt } from "./smiles";
+import { cleanSmiles, splitReaction, tokenOccurrenceAt } from "./smiles";
 
 let renderer: SmilesRenderer;
 let detector: Detector;
@@ -46,16 +46,12 @@ export function activate(context: vscode.ExtensionContext): void {
   renderer = new SmilesRenderer(context.extensionPath);
   detector = new Detector(renderer);
 
-  const hover = vscode.languages.registerHoverProvider(
-    [
-      { scheme: "file" },
-      { scheme: "untitled" },
-      // Notebook cells and the interactive window are their own documents.
-      { scheme: "vscode-notebook-cell" },
-      { scheme: "vscode-interactive-input" },
-    ],
-    { provideHover }
-  );
+  // Every document, whatever its scheme. Files and notebook cells are the
+  // obvious ones, but SMILES turn up in read-only views nobody registers for:
+  // tool and command output opened in a tab, diffs, the Output panel, a
+  // notebook output expanded into its own editor. All are documents; naming
+  // schemes one at a time only ever misses the next one.
+  const hover = vscode.languages.registerHoverProvider("*", { provideHover });
 
   const showCmd = vscode.commands.registerTextEditorCommand(
     "smilesHover.showSelection",
@@ -89,6 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // coalesces them.
   const rescan = [
     vscode.window.onDidChangeActiveTextEditor(() => detector.schedule(50)),
+    vscode.window.onDidChangeVisibleTextEditors(() => detector.schedule(50)),
     vscode.window.onDidChangeTextEditorVisibleRanges(() => detector.schedule()),
     vscode.window.onDidChangeActiveNotebookEditor(() => detector.schedule(50)),
     vscode.window.onDidChangeNotebookEditorVisibleRanges(() =>
@@ -121,7 +118,9 @@ export function deactivate(): void {}
 
 /** Is this document one the user can currently see? Cells count. */
 function isOnScreen(doc: vscode.TextDocument): boolean {
-  if (doc === vscode.window.activeTextEditor?.document) return true;
+  if (vscode.window.visibleTextEditors.some((e) => e.document === doc)) {
+    return true;
+  }
   const notebook = vscode.window.activeNotebookEditor?.notebook;
   return doc.uri.scheme === "vscode-notebook-cell" && !!notebook;
 }
@@ -191,9 +190,10 @@ function moleculeMarkdown(smiles: string, svg: string): vscode.MarkdownString {
   const dataUri =
     "data:image/svg+xml;base64," + Buffer.from(svg, "utf8").toString("base64");
 
+  const label = splitReaction(smiles) ? "Reaction" : "SMILES";
   const md = new vscode.MarkdownString();
   md.supportHtml = false;
-  md.appendMarkdown(`**SMILES** \`${escapeMd(smiles)}\`\n\n`);
+  md.appendMarkdown(`**${label}** \`${escapeMd(smiles)}\`\n\n`);
   md.appendMarkdown(`![molecule](${dataUri})`);
   return md;
 }

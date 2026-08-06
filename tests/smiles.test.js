@@ -1,7 +1,11 @@
 // Run with: npm test
 const assert = require("node:assert");
 const test = require("node:test");
-const { cleanSmiles, tokenOccurrenceAt } = require("../out/smiles.js");
+const {
+  cleanSmiles,
+  splitReaction,
+  tokenOccurrenceAt,
+} = require("../out/smiles.js");
 
 test("cleanSmiles strips the junk a selection picks up", () => {
   assert.equal(cleanSmiles('  "CCO",  '), "CCO");
@@ -66,4 +70,22 @@ test("tokenOccurrenceAt treats bond characters as part of the token", () => {
 
 test("tokenOccurrenceAt handles an empty needle", () => {
   assert.equal(at("|abc", ""), undefined);
+});
+
+test("splitReaction takes the RXNSMILES shape and nothing else", () => {
+  assert.deepEqual(splitReaction("CCO>>CCBr"), {
+    reactants: ["CCO"],
+    agents: [],
+    products: ["CCBr"],
+  });
+  assert.deepEqual(splitReaction("CCO.CC(=O)O>[H+]>CCOC(C)=O.O"), {
+    reactants: ["CCO", "CC(=O)O"],
+    agents: ["[H+]"],
+    products: ["CCOC(C)=O", "O"],
+  });
+  // One `>` is a comparison, three is nothing; both sides must hold something.
+  assert.equal(splitReaction("CCO>CCBr"), undefined);
+  assert.equal(splitReaction("CCO>>CCBr>>CC"), undefined);
+  assert.equal(splitReaction("CCO>>"), undefined);
+  assert.equal(splitReaction("CCO"), undefined);
 });

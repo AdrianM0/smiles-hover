@@ -254,3 +254,13 @@ test("switching molecules swaps the picture without rebuilding it", async () => 
   assert.equal(img.src, "data:image/svg+xml;base64,Qg==", "just a new src");
   assert.equal(doc.querySelectorAll(".smiles-hover-tooltip").length, 1);
 });
+
+test("a reaction in output is one hit, not two molecules", async () => {
+  const out = await mount();
+  await out.render(`<pre id="o">step 1: CCO.CC(=O)O>[H+]>CCOC(C)=O.O</pre>`);
+
+  assert.deepEqual(
+    out.hits().map((s) => s.dataset.smiles),
+    ["CCO.CC(=O)O>[H+]>CCOC(C)=O.O"]
+  );
+});

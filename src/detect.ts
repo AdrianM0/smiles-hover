@@ -112,14 +112,15 @@ function visibleRegions(margin: number): Region[] {
     return out;
   }
 
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) return [];
-  const doc = editor.document;
-  return editor.visibleRanges.map((range) => ({
-    doc,
-    first: Math.max(0, range.start.line - margin),
-    last: Math.min(doc.lineCount - 1, range.end.line + margin),
-  }));
+  // Every editor on screen, not just the focused one: output opened beside the
+  // code is exactly the kind of thing worth having drawn before it's hovered.
+  return vscode.window.visibleTextEditors.flatMap((editor) =>
+    editor.visibleRanges.map((range) => ({
+      doc: editor.document,
+      first: Math.max(0, range.start.line - margin),
+      last: Math.min(editor.document.lineCount - 1, range.end.line + margin),
+    }))
+  );
 }
 
 /** Cells either side of the visible ones, and lines taken from each cell. */

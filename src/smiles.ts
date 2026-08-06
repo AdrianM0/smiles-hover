@@ -1,8 +1,35 @@
 /**
  * Characters that can be part of a SMILES token. Rejects fragments of longer
- * runs: `CCO` shouldn't match inside `CCOCC` or inside `Cocoa`.
+ * runs: `CCO` shouldn't match inside `CCOCC` or inside `Cocoa`. `>` is here for
+ * reaction SMILES, so `CCO>>CCBr` is one token rather than two molecules.
  */
-export const SMILES_CHAR = /[A-Za-z0-9@+\-[\]()\\/#=%.:$*]/;
+export const SMILES_CHAR = /[A-Za-z0-9@+\-[\]()\\/#=%.:$*>]/;
+
+/** Reaction SMILES: reactants, agents, products, each a list of components. */
+export interface Reaction {
+  reactants: string[];
+  /** Catalysts, solvents, conditions — empty for the usual `>>`. */
+  agents: string[];
+  products: string[];
+}
+
+/**
+ * Split `reactants>agents>products`. Exactly two `>` separators: one is a
+ * comparison, not a reaction, and RDKit rejects it too. Both ends must hold
+ * something — `CCO>>` is a reaction with nothing made.
+ */
+export function splitReaction(text: string): Reaction | undefined {
+  const parts = text.split(">");
+  if (parts.length !== 3) return undefined;
+  const [reactants, agents, products] = parts.map(components);
+  if (reactants.length === 0 || products.length === 0) return undefined;
+  return { reactants, agents, products };
+}
+
+/** `.` separates components within a side; `CCO..O` is just sloppy. */
+function components(side: string): string[] {
+  return side.split(".").filter((c) => c.length > 0);
+}
 
 /**
  * The occurrence of `needle` that `character` sits inside, as a whole token.

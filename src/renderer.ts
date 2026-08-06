@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { Reaction, splitReaction } from "./smiles";
 
 interface CacheEntry {
   svg?: string;
@@ -99,6 +100,21 @@ export class SmilesRenderer {
     const known = this.validity.get(smiles);
     if (known !== undefined) return known;
 
+    // A reaction is valid when its components are. MinimalLib's own reaction
+    // drawing is unusable here — see drawReaction — so it never sees one.
+    const rxn = splitReaction(smiles);
+    if (rxn) {
+      for (const part of componentsOf(rxn)) {
+        if (await this.isValid(part)) continue;
+        // An unremembered `false` means RDKit never answered; don't remember
+        // this reaction as bad on the strength of that.
+        if (this.validity.get(part) === false) this.validity.set(smiles, false);
+        return false;
+      }
+      this.validity.set(smiles, true);
+      return true;
+    }
+
     let ok = false;
     try {
       const rdkit = await this.load();
@@ -162,8 +178,11 @@ export class SmilesRenderer {
     }
 
     try {
-      const raw = await this.draw(smiles, width, height, preset, autoSize);
-      const svg = fitForHover(cropToInk(raw), maxW, maxH);
+      const rxn = splitReaction(smiles);
+      const drawn = rxn
+        ? await this.drawReaction(rxn, width, height, preset, autoSize)
+        : cropToInk(await this.draw(smiles, width, height, preset, autoSize));
+      const svg = fitForHover(drawn, maxW, maxH);
       this.cache.set(cacheKey, { svg });
       return svg;
     } catch (err) {
@@ -171,6 +190,53 @@ export class SmilesRenderer {
       this.cache.set(cacheKey, { error: msg });
       throw err;
     }
+  }
+
+  /**
+   * A reaction, drawn a component at a time and laid out here.
+   *
+   * MinimalLib does expose `get_rxn`, but its drawing is no use: every
+   * structure comes out grey whatever the palette, and the arrow's coordinates
+   * are `-nan` in this build, so nothing points anywhere. Composing our own
+   * from the molecule drawings costs a layout pass and gives reactions the
+   * same styling, colours and line weight as everything else.
+   */
+  private async drawReaction(
+    rxn: Reaction,
+    width: number,
+    height: number,
+    preset: string,
+    autoSize: boolean
+  ): Promise<string> {
+    // Components are drawn smaller than a lone molecule: a reaction is several
+    // structures wide and the whole row still has to fit a hover.
+    const piece = async (smiles: string, maxW: number, maxH: number) => {
+      try {
+        const raw = await this.draw(
+          smiles,
+          width * COMPONENT_SCALE,
+          height * COMPONENT_SCALE,
+          preset,
+          autoSize
+        );
+        return measure(cropToInk(raw), maxW, maxH);
+      } catch {
+        // Undrawable, which for a component usually means a condition rather
+        // than a structure — `[H+]`. Chemists write those as text anyway.
+        return textPiece(smiles);
+      }
+    };
+
+    const row = (all: string[], maxW: number, maxH: number) =>
+      Promise.all(all.map((s) => piece(s, maxW, maxH)));
+
+    const [reactants, agents, products] = await Promise.all([
+      row(rxn.reactants, MAX_COMPONENT_W, MAX_COMPONENT_H),
+      row(rxn.agents, MAX_AGENT_W, MAX_AGENT_H),
+      row(rxn.products, MAX_COMPONENT_W, MAX_COMPONENT_H),
+    ]);
+
+    return composeReaction(reactants, agents, products);
   }
 
   private async draw(
@@ -196,9 +262,13 @@ export class SmilesRenderer {
 
     try {
       const [w, h] = autoSize ? canvasFor(mol, width, height) : [width, height];
-      return mol.get_svg_with_highlights(
+      const svg = mol.get_svg_with_highlights(
         JSON.stringify(drawOptions(w, h, preset))
       );
+      // Anything RDKit strips every atom from — `[H+]`, `[H][H]` — lays out
+      // with no extent and comes back as `nan` coordinates: a blank box.
+      if (/\bnan\b/.test(svg)) throw new Error(`Nothing to draw: ${smiles}`);
+      return svg;
     } finally {
       // WASM heap isn't garbage-collected for us.
       mol.delete();
@@ -281,6 +351,185 @@ function fitForHover(svg: string, maxW: number, maxH: number): string {
       .replace(/\bwidth=['"][\d.]+px['"]/, `width='${dispW}px'`)
       .replace(/\bheight=['"][\d.]+px['"]/, `height='${dispH}px'`)
   );
+}
+
+/** Every structure in a reaction, in drawing order. */
+function componentsOf(rxn: Reaction): string[] {
+  return [...rxn.reactants, ...rxn.agents, ...rxn.products];
+}
+
+/** Reactions are drawn at this fraction of a lone molecule's scale. */
+const COMPONENT_SCALE = 0.62;
+const MAX_COMPONENT_W = 300;
+const MAX_COMPONENT_H = 220;
+const MAX_AGENT_W = 150;
+const MAX_AGENT_H = 110;
+
+/** A drawn structure and the size it is to be shown at. */
+interface Piece {
+  svg: string;
+  w: number;
+  h: number;
+}
+
+/** The intrinsic size of an RDKit SVG, from its root element. */
+function svgSize(svg: string): [number, number] | undefined {
+  const m = svg.match(
+    /<svg[^>]*?\bwidth=['"](\d+(?:\.\d+)?)px['"]\s+height=['"](\d+(?:\.\d+)?)px['"]/
+  );
+  if (!m) return undefined;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  return w > 0 && h > 0 ? [w, h] : undefined;
+}
+
+/** Shrink a drawing to fit a box, keeping its viewBox so it scales, not crops. */
+function measure(svg: string, maxW: number, maxH: number): Piece {
+  const size = svgSize(svg);
+  if (!size) return { svg, w: maxW, h: maxH };
+  const [w, h] = size;
+  const scale = Math.min(1, maxW / w, maxH / h);
+  return { svg, w: Math.round(w * scale), h: Math.round(h * scale) };
+}
+
+/** A component shown as its own text, for the ones that don't draw. */
+function textPiece(label: string): Piece {
+  const size = 14;
+  const w = Math.round(label.length * size * 0.62) + 10;
+  const h = size + 10;
+  const text =
+    `<text x='${w / 2}' y='${h / 2}' text-anchor='middle' ` +
+    `dominant-baseline='central' font-family='sans-serif' font-size='${size}' ` +
+    `fill='${INK}'>${escapeXml(label)}</text>`;
+  return {
+    svg:
+      `<svg xmlns='http://www.w3.org/2000/svg' width='${w}px' height='${h}px' ` +
+      `viewBox='0 0 ${w} ${h}'>` +
+      `<rect style='fill:#FFFFFF;stroke:none' width='${w}' height='${h}' x='0' y='0'/>` +
+      `${text}</svg>`,
+    w,
+    h,
+  };
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const GAP = 12;
+/** Room for the `+` between two components. */
+const PLUS = 24;
+const ARROW_MIN = 76;
+/** Clear space either side of the arrow. */
+const ARROW_PAD = 12;
+/** Between the agents and the arrow they sit above. */
+const AGENT_LIFT = 8;
+const MARGIN = 6;
+
+/**
+ * Lay the components out in a row: reactants, arrow, products, `+` between
+ * components and any agents riding above the arrow.
+ *
+ * Each drawing goes in as a nested `<svg>`, which is its own viewport: the
+ * viewBox does the scaling, so the composite stays vector all the way down.
+ */
+function composeReaction(
+  reactants: Piece[],
+  agents: Piece[],
+  products: Piece[]
+): string {
+  const rowW = (ps: Piece[]) =>
+    ps.reduce((n, p) => n + p.w, 0) +
+    Math.max(0, ps.length - 1) * (PLUS + GAP * 2);
+  const rowH = (ps: Piece[]) => ps.reduce((n, p) => Math.max(n, p.h), 0);
+
+  const agentsW =
+    agents.reduce((n, p) => n + p.w, 0) + Math.max(0, agents.length - 1) * GAP;
+  const agentsH = rowH(agents);
+  const arrowLen = Math.max(ARROW_MIN, agentsW + 24);
+  // The arrow sits on the centre line, so the agents above it set how tall the
+  // arrow's half of the row has to be.
+  const above = agentsH > 0 ? agentsH + AGENT_LIFT : 0;
+
+  const height = Math.max(rowH(reactants), rowH(products), (above + 10) * 2);
+  const width =
+    rowW(reactants) + rowW(products) + arrowLen + ARROW_PAD * 2 + GAP * 2;
+  const cy = MARGIN + height / 2;
+
+  const out: string[] = [];
+  let x = MARGIN;
+
+  const placeRow = (ps: Piece[]) => {
+    ps.forEach((p, i) => {
+      out.push(placeSvg(p, x, cy - p.h / 2));
+      x += p.w;
+      if (i < ps.length - 1) {
+        out.push(plusSign(x + GAP + PLUS / 2, cy));
+        x += GAP * 2 + PLUS;
+      }
+    });
+  };
+
+  placeRow(reactants);
+  x += ARROW_PAD + GAP;
+
+  let ax = x + (arrowLen - agentsW) / 2;
+  for (const agent of agents) {
+    out.push(placeSvg(agent, ax, cy - AGENT_LIFT - agentsH / 2 - agent.h / 2));
+    ax += agent.w + GAP;
+  }
+  out.push(arrow(x, cy, arrowLen));
+  x += arrowLen + ARROW_PAD + GAP;
+
+  placeRow(products);
+
+  const w = Math.round(width + MARGIN * 2);
+  const h = Math.round(height + MARGIN * 2);
+  return [
+    `<?xml version='1.0' encoding='UTF-8'?>`,
+    `<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='${w}px' height='${h}px' viewBox='0 0 ${w} ${h}'>`,
+    `<rect style='opacity:1.0;fill:#FFFFFF;stroke:none' width='${w}' height='${h}' x='0' y='0'> </rect>`,
+    ...out,
+    `</svg>`,
+  ].join("\n");
+}
+
+/** A drawing as a nested viewport at (x, y), shown at the size it was given. */
+function placeSvg(piece: Piece, x: number, y: number): string {
+  return piece.svg
+    .replace(/^\s*<\?xml[^>]*\?>\s*/, "")
+    .replace(
+      /<svg\b([^>]*)>/,
+      (_all, attrs: string) =>
+        `<svg x='${round(x)}' y='${round(y)}'${attrs
+          .replace(/\bwidth=['"][\d.]+px['"]/, `width='${piece.w}px'`)
+          .replace(/\bheight=['"][\d.]+px['"]/, `height='${piece.h}px'`)}>`
+    );
+}
+
+const INK = "#333333";
+
+function arrow(x: number, cy: number, length: number): string {
+  const tip = round(x + length);
+  const back = round(x + length - 10);
+  return (
+    `<path d='M ${round(x)},${round(cy)} L ${tip},${round(cy)}' ` +
+    `style='fill:none;stroke:${INK};stroke-width:2px;stroke-linecap:butt'/>` +
+    `<path d='M ${tip},${round(cy)} L ${back},${round(cy - 4.5)} ` +
+    `L ${back},${round(cy + 4.5)} Z' style='fill:${INK};stroke:none'/>`
+  );
+}
+
+function plusSign(x: number, cy: number): string {
+  return (
+    `<text x='${round(x)}' y='${round(cy)}' text-anchor='middle' ` +
+    `dominant-baseline='central' font-family='sans-serif' font-size='20' ` +
+    `fill='${INK}'>+</text>`
+  );
+}
+
+function round(n: number): string {
+  return n.toFixed(1);
 }
 
 /**

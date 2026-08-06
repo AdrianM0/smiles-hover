@@ -5,8 +5,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Hover a SMILES string anywhere — Python, JS, JSON, CSV, Markdown, plain text,
-and Jupyter notebooks down to their cell output — and see the 2D structure
-rendered with **RDKit** in **ChemDraw style**.
+read-only tabs like tool or command output, and Jupyter notebooks down to their
+cell output — and see the 2D structure rendered with **RDKit** in **ChemDraw
+style**. Reaction SMILES are drawn whole, arrow and all.
 Molecules on screen are found and drawn before you reach for them; anything
 that isn't chemistry is silently ignored.
 
@@ -84,6 +85,20 @@ A line that names SMILES vouches for its values, so `Chem.MolFromSmiles("CCO")`
 and `smiles = ["CCO", "CCN"]` are drawn even though `CCO` is short. Lower
 `autoDetectMinLength` to `3` if you write bare `CCO` in prose. Anything
 detection skips is still one selection and `Ctrl+K M` away.
+
+**Reactions.** A token in `reactants>agents>products` form is one molecule as
+far as hovering goes: `CCO.CC(=O)O>[H+]>CCOC(C)=O.O` draws every component,
+with `+` between them, the agents above the arrow, and the arrow between the
+two sides. Exactly two `>` separators are required — RXNSMILES says so, and it
+keeps `cin>>x` and `if (n>c)` out. Components are drawn smaller than a lone
+molecule so the row still fits the hover; anything RDKit won't draw, such as
+`[H+]`, is written above the arrow as text, where a chemist would put it.
+
+**Anywhere text is.** Hovering works in every editor tab, whatever opened it:
+files, diffs, the Output panel, a notebook output expanded into its own editor,
+and the read-only tabs that agent and command output lands in. The integrated
+terminal is not an editor and has no hover — copy the string out and use
+`Ctrl+K M`.
 
 **Jupyter notebooks** work in cell sources and in cell output — see
 [below](#jupyter-notebooks).
@@ -192,7 +207,11 @@ Color presets:
    using CoordGen for ChemDraw-like 2D geometry and draw options that
    approximate RDKit's ACS 1996 preset — bumped above the ACS print defaults
    for bond width and font size, which are calibrated for paper and read as
-   spidery on screen.
+   spidery on screen. A reaction is drawn a component at a time and composed
+   here, each structure a nested `<svg>`: MinimalLib's own `get_rxn` drawing
+   comes out grey whatever the palette, and its arrow has `nan` coordinates in
+   this build, so nothing points anywhere. Composing keeps reactions in the
+   same style, colours and line weight as everything else.
 3. The SVG is base64-encoded into a `data:` URI and embedded in the hover
    markdown. No temp files, no subprocess.
 4. Cell output is the exception: no hover provider reaches into a webview, so
@@ -234,7 +253,10 @@ publishes to the Marketplace — see
 
 ## Limitations
 
-- No InChI, no reaction SMARTS.
+- No InChI, and no reaction SMARTS: query atoms like `[#6]` aren't molecules.
+  Plain reaction SMILES are drawn.
+- The integrated terminal isn't a document, so nothing hovers there. Editor
+  tabs holding command output do.
 - Notebook output rendered by a third-party renderer — a plotly or ipywidget
   view — draws into its own frame and isn't reached. Everything the built-in
   renderer draws is.

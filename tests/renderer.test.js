@@ -85,3 +85,30 @@ test("the canvas follows the molecule, not the base size", async () => {
   const width = (svg) => +svg.match(/width='([\d.]+)px'/)[1];
   assert.ok(width(small) < width(big) / 1.5, "small molecule drawn too large");
 });
+
+test("a reaction is its components, an arrow, and a + between each", async () => {
+  const svg = await renderer.render("CCO.CC(=O)O>[H+]>CCOC(C)=O.O");
+  // Four structures, each a nested viewport, plus the agent as text.
+  assert.equal((svg.match(/<svg/g) ?? []).length, 6);
+  assert.equal((svg.match(/>\+<\/text>/g) ?? []).length, 2);
+  assert.ok(svg.includes("[H+]"), "undrawable agent not labelled");
+  // The arrowhead: a filled triangle, which no molecule drawing contains.
+  assert.ok(/Z' style='fill:#333333/.test(svg), "no arrowhead");
+  assert.ok(!/\bnan\b/.test(svg), "blank coordinates reached the picture");
+});
+
+test("a reaction fits the hover like anything else", async () => {
+  const svg = await renderer.render(
+    "CC(=O)Oc1ccccc1C(=O)O.O>>CC(=O)O.Oc1ccccc1C(=O)O"
+  );
+  const [, w, h] = svg.match(/width='([\d.]+)px' height='([\d.]+)px'/);
+  assert.ok(+w <= settings.maxHoverWidth, `too wide: ${w}`);
+  assert.ok(+h <= settings.maxHoverHeight, `too tall: ${h}`);
+});
+
+test("a reaction is valid only when every component is", async () => {
+  assert.ok(await renderer.isValid("CCO>>CCBr"));
+  assert.ok(await renderer.isValid("CCO.CC(=O)O>[H+]>CCOC(C)=O.O"));
+  assert.ok(!(await renderer.isValid("CCO>>c1cc")));
+  assert.ok(!(await renderer.isValid("qqq>>CCO")));
+});

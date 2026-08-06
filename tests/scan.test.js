@@ -99,3 +99,23 @@ test("candidateAt returns the token the cursor is inside", () => {
   assert.equal(at('|"CC(=O)O"'), undefined);
   assert.equal(at("CCO, |CC(=O)O"), "CC(=O)O");
 });
+
+test("a reaction is one token, arrows and all", () => {
+  assert.deepEqual(texts("CCO>>CCBr"), ["CCO>>CCBr"]);
+  assert.deepEqual(texts("the ester forms: CCO.CC(=O)O>[H+]>CCOC(C)=O.O"), [
+    "CCO.CC(=O)O>[H+]>CCOC(C)=O.O",
+  ]);
+  // Short is fine here: nothing but a reaction is shaped like one.
+  assert.deepEqual(texts("C>>N"), ["C>>N"]);
+  assert.equal(at("CCO.CC>[H|+]>CCOCC"), "CCO.CC>[H+]>CCOCC");
+});
+
+test("code that merely contains angle brackets is not a reaction", () => {
+  assert.deepEqual(texts("cin>>x"), []);
+  assert.deepEqual(texts("value>>2"), []);
+  assert.deepEqual(texts("if (n>c) return;"), []);
+  // One separator isn't RXNSMILES: the sides are read as plain molecules.
+  assert.ok(!texts("CCO>CCBr").includes("CCO>CCBr"));
+  // HTML leaves a `>` on the front of what follows it.
+  assert.deepEqual(texts("<span>CC(=O)O</span>"), ["CC(=O)O"]);
+});

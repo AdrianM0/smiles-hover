@@ -1,4 +1,4 @@
-import { SMILES_CHAR } from "./smiles";
+import { SMILES_CHAR, splitReaction } from "./smiles";
 
 /**
  * How strongly the text vouches for a token. `ISC`, `CSS`, `CNN` and `SNP` all
@@ -24,8 +24,8 @@ export interface Candidate {
 const MAX_LINE = 2000;
 
 /** Punctuation that can't begin or end a SMILES, so it must be sentence noise. */
-const LEADING_JUNK = /^[=#$:.,;/\\%@+\-*)]/;
-const TRAILING_JUNK = /[=#$:.,;/\\%@+\-*(]$/;
+const LEADING_JUNK = /^[=#$:.,;/\\%@+\-*)>]/;
+const TRAILING_JUNK = /[=#$:.,;/\\%@+\-*(>]$/;
 
 const QUOTES = "\"'`“”‘’";
 const SEPARATORS = "\t,;|";
@@ -45,6 +45,17 @@ export function findCandidates(
   const keyed = declaredFile || hasSmilesKey(line);
   const out: Candidate[] = [];
 
+  /** Take this span if it holds a molecule. Says whether it did. */
+  const consider = (start: number, stop: number): boolean => {
+    const trimmed = trimToken(line, start, stop);
+    if (!trimmed) return false;
+    const text = line.slice(trimmed[0], trimmed[1]);
+    const context = keyed ? "declared" : contextOf(line, trimmed[0], trimmed[1]);
+    if (!isPlausible(text, context, minLength)) return false;
+    out.push({ text, start: trimmed[0], end: trimmed[1], context });
+    return true;
+  };
+
   let i = 0;
   while (i < line.length) {
     if (!SMILES_CHAR.test(line[i])) {
@@ -54,14 +65,15 @@ export function findCandidates(
     let end = i;
     while (end < line.length && SMILES_CHAR.test(line[end])) end++;
 
-    const trimmed = trimToken(line, i, end);
-    if (trimmed) {
-      const text = line.slice(trimmed[0], trimmed[1]);
-      const context = keyed
-        ? "declared"
-        : contextOf(line, trimmed[0], trimmed[1]);
-      if (isPlausible(text, context, minLength)) {
-        out.push({ text, start: trimmed[0], end: trimmed[1], context });
+    const run = line.slice(i, end);
+    // A run holding `>` is a reaction or it isn't. When it isn't, the `>` came
+    // from the text around it — a tag, a shell redirect — so the molecules on
+    // either side are still molecules: `<span>CC(=O)O</span>`.
+    if (!consider(i, end) && run.includes(">")) {
+      let at = i;
+      for (const segment of run.split(">")) {
+        consider(at, at + segment.length);
+        at += segment.length + 1;
       }
     }
     i = end;
@@ -198,6 +210,11 @@ function isPlausible(
   minLength: number
 ): boolean {
   if (!/[A-Za-z]/.test(text)) return false; // needs at least one atom
+
+  // A reaction vouches for itself: two `>` separators with molecules either
+  // side is a shape nothing else in a source file has, however short.
+  if (text.includes(">")) return isReactionShaped(text);
+
   if (!syntaxOk(text)) return false;
   if (context === "declared") return true;
 
@@ -206,6 +223,15 @@ function isPlausible(
 
   // Letters only: an acronym in prose until longer than anyone abbreviates.
   return context === "field" || text.length >= 8;
+}
+
+/** Every component of every side parses as SMILES, and there is a component. */
+function isReactionShaped(text: string): boolean {
+  const rxn = splitReaction(text);
+  if (!rxn) return false;
+  return [...rxn.reactants, ...rxn.agents, ...rxn.products].every(
+    (part) => /[A-Za-z]/.test(part) && syntaxOk(part)
+  );
 }
 
 /** Elements writable without brackets, longest symbol first. */
