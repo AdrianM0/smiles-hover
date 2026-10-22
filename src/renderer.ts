@@ -168,7 +168,7 @@ export class SmilesRenderer {
     const preset = cfg.get<string>("colorPreset", "chemdraw");
     const autoSize = cfg.get<boolean>("autoSize", true);
     const maxW = cfg.get<number>("maxHoverWidth", 460);
-    const maxH = cfg.get<number>("maxHoverHeight", 240);
+    const maxH = cfg.get<number>("maxHoverHeight", 190);
 
     const cacheKey = `${smiles}::${width}x${height}::${preset}::${autoSize}::${maxW}x${maxH}`;
     const cached = this.cache.get(cacheKey);

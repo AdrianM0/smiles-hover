@@ -95,7 +95,7 @@ notebook.
 | `smilesHover.maxPrerender`        | `40`       | Molecules drawn ahead per screenful.             |
 | `smilesHover.autoSize`            | `true`     | Size the canvas to the molecule.                 |
 | `smilesHover.maxHoverWidth`       | `460`      | Max displayed width inside the hover, px.        |
-| `smilesHover.maxHoverHeight`      | `240`      | Max displayed height inside the hover, px.       |
+| `smilesHover.maxHoverHeight`      | `190`      | Max displayed height inside the hover, px.       |
 | `smilesHover.imageWidth`          | `500`      | Base render width in px.                         |
 | `smilesHover.imageHeight`         | `350`      | Base render height in px.                        |
 | `smilesHover.colorPreset`         | `chemdraw` | `chemdraw`, `bright`, or `mono` atom palette.    |

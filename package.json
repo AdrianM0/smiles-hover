@@ -2,7 +2,7 @@
   "name": "smiles-hover",
   "displayName": "SMILES Hover",
   "description": "Hover any SMILES string to see its 2D molecular structure, rendered with RDKit in ChemDraw style. Reaction SMILES are drawn with arrows. Molecules on screen are found automatically. No setup required.",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "publisher": "adrianm0",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -78,8 +78,8 @@
         },
         "smilesHover.maxHoverHeight": {
           "type": "number",
-          "default": 240,
-          "description": "Maximum height the molecule is displayed at inside the hover (px). VS Code's hover is roughly a quarter of the editor height; raise this if you have a tall editor and want bigger structures."
+          "default": 190,
+          "description": "Maximum height the molecule is displayed at inside the hover (px). VS Code caps a hover at 250px tall (more in a tall editor), label included, so the default leaves room for the SMILES line above the picture. Raise this in a tall editor for bigger structures."
         },
         "smilesHover.autoSize": {
           "type": "boolean",

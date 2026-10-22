@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+- **Fix: the editor hover scrolled.** VS Code's 250px hover limit covers the
+  SMILES label too, and a 240px picture plus the label went over it.
+  `maxHoverHeight` now defaults to 190.
+
 ## 1.3.1
 
 - **Fix: `print()` output was mostly invisible to detection** ([#6]). A print
